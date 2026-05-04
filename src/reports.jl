@@ -1,2 +1,15 @@
-# Report pasing will go here
-# Target inputs: inventory,json/md, routing-report.json/md, stats.json/md, saaq-realiness.json/md.
+using JSON3
+
+struct RouterRecord
+    block::Int
+    slot::Int
+    shape::String
+    orientation::String
+    experts::Int
+    kind::String
+    structural_name::String
+end
+
+function load_json_report(path::AbstractString)
+    return JSON3.read(read(path, String))
+end

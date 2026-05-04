@@ -5,7 +5,7 @@ end
 function router_logits(::CUDABackend, h::AbstractVector, W::AbstractMatrix)
     @eval using CUDA
     h_gpu = CUDA.CuArray(Float32.(h))
-    w_gpu = CUDA.CuArray(Float32.(W))
+    W_gpu = CUDA.CuArray(Float32.(W))
     return Array(vec(transpose(h_gpu) * W_gpu))
 end
 
