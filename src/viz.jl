@@ -7,11 +7,7 @@
 #
 # Works with real or fully synthetic XAIReportBundle. CPU always, CUDA optional.
 
-using GLMakie
-using GraphMakie
-using Graphs
-using Makie
-using Observables
+using GLMakie, GraphMakie, Graphs, Makie, Observables
 
 function launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = CPUBackend())
     n_blocks = get(bundle.metadata, "n_blocks", 64)
