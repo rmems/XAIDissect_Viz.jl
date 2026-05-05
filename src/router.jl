@@ -1,3 +1,5 @@
+using Random
+
 function router_logits(::CPUBackend, h::AbstractVector, W::AbstractMatrix)
     return vec(transpose(h) * W)
 end

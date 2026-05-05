@@ -2,7 +2,6 @@ module XAIDissectViz
 
 using LinearAlgebra
 using Statistics
-using Random
 
 include("types.jl")
 include("backend.jl")
