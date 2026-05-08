@@ -36,6 +36,41 @@ end
     @test_throws ArgumentError load_report_bundle("/tmp/xai_dissect_does_not_exist_$(rand(UInt64))")
 end
 
+@testset "_resolve_reports_dir: ambiguous run root" begin
+    required = ("routing-report.json", "inventory.json", "stats.json",
+                "saaq-readiness.json", "experts.json")
+    function _make_valid_ckpt_dir(parent, label)
+        d = joinpath(parent, label)
+        mkpath(d)
+        for f in required
+            write(joinpath(d, f), "{}")
+        end
+        return d
+    end
+
+    mktempdir() do run_root
+        exports = joinpath(run_root, "exports")
+        mkpath(exports)
+        ckpt_a = _make_valid_ckpt_dir(exports, "grok-1__ckpt-0")
+        ckpt_b = _make_valid_ckpt_dir(exports, "grok-1__ckpt-1")
+
+        @test isdir(ckpt_a) && isdir(ckpt_b)
+
+        @test_throws ArgumentError XAIDissectViz._resolve_reports_dir(run_root)
+        @test_throws ArgumentError load_report_bundle(run_root)
+
+        # Pointing at one of the checkpoint dirs directly resolves cleanly.
+        @test XAIDissectViz._resolve_reports_dir(ckpt_a) == abspath(ckpt_a)
+    end
+
+    mktempdir() do run_root
+        exports = joinpath(run_root, "exports")
+        mkpath(exports)
+        ckpt = _make_valid_ckpt_dir(exports, "grok-1__ckpt-0")
+        @test XAIDissectViz._resolve_reports_dir(run_root) == abspath(ckpt)
+    end
+end
+
 @testset "load_report_bundle: real reports (gated)" begin
     reports_dir = get(ENV, "XAI_DISSECT_REPORTS", "")
     if !isempty(reports_dir) && isdir(reports_dir)

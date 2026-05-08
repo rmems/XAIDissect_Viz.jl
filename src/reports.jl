@@ -20,17 +20,29 @@ end
 # Resolve a user-supplied path to the directory that actually contains the 5 JSONs.
 # Accepts either:
 #   - a directory containing the 5 files directly, or
-#   - a "run root" with `exports/<ckpt_label>/` underneath.
+#   - a "run root" with exactly one `exports/<ckpt_label>/` underneath that
+#     contains the required files.
+# If the run root has multiple valid checkpoint report directories, raise an
+# ArgumentError instead of silently picking the first one — the caller must
+# pass the exact directory.
 function _resolve_reports_dir(path::AbstractString)::String
     if all(isfile(joinpath(path, f)) for f in _REQUIRED_REPORT_FILES)
         return abspath(path)
     end
     exports_root = joinpath(path, "exports")
     if isdir(exports_root)
+        candidates = String[]
         for entry in readdir(exports_root; join = true)
             if isdir(entry) && all(isfile(joinpath(entry, f)) for f in _REQUIRED_REPORT_FILES)
-                return abspath(entry)
+                push!(candidates, abspath(entry))
             end
+        end
+        if length(candidates) > 1
+            throw(ArgumentError(
+                "Multiple xai-dissect report directories found; " *
+                "pass the exact checkpoint report directory"))
+        elseif length(candidates) == 1
+            return candidates[1]
         end
     end
     return abspath(path)
