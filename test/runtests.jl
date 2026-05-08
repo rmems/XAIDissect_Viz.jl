@@ -83,3 +83,16 @@ end
     @test isdefined(XAIDissectViz, :XAIReportBundle)
     @test isdefined(XAIDissectViz, :RouterFrame)
 end
+
+@testset "load_json_report" begin
+    mktempdir() do tmpdir
+        path = joinpath(tmpdir, "tiny.json")
+        write(path, """{"block": 1, "slot": 11, "shape": "6144x8", "d_model": 6144}""")
+        obj = XAIDissectViz.load_json_report(path)
+        @test obj[:block] == 1
+        @test obj[:slot] == 11
+        @test obj[:shape] == "6144x8"
+        @test obj[:d_model] == 6144
+    end
+    @test_throws SystemError XAIDissectViz.load_json_report("/tmp/xaiviz_does_not_exist_$(rand(UInt64)).json")
+end
