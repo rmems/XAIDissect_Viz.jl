@@ -1,60 +1,173 @@
 using JSON3
-using Random
 
-# Report loading and synthetic data generation.
-# load_report_bundle(path) tries real xai-dissect JSONs (5 files) or falls back
-# to a fully in-memory synthetic XAIReportBundle (no .json files are created).
+# Real xai-dissect JSON loader.
+# Parses the 5 standard report files into typed structs:
+#   inventory.json, routing-report.json, stats.json, saaq-readiness.json, experts.json
+# No synthetic, in-memory, or random fallback. Missing files raise ArgumentError.
 
-function generate_synthetic_bundle()::XAIReportBundle
-    Random.seed!(42)
-    metadata = Dict{String,Any}(
-        "n_blocks" => 64,
-        "n_experts" => 8,
-        "d_model" => 6144,
-        "top_k" => 2,
-        "source" => "synthetic-in-memory"
-    )
-    routers = [RouterRecord(b, 0, "6144x8", "row", 8, "router", "block_$(b)_router") for b in 1:64]
-    experts = ExpertRecord[]
-    for b in 1:64, e in 1:8
-        push!(experts, ExpertRecord(b, e, "expert_$(b)_$(e)", 12_345_678))
-    end
-    tensor_metrics = [TensorMetricRecord("router_weight", b, "6144x8", randn(Float32), abs(randn(Float32))) for b in 1:64]
-    saaq = SAAQReadinessRecord[]
-    for b in 1:64
-        risk = 0.12f0 + 0.28f0 * rand(Float32)
-        readiness = max(0.55f0, 0.92f0 - risk)
-        status = risk < 0.25f0 ? "ok" : (risk < 0.35f0 ? "monitor" : "review")
-        push!(saaq, SAAQReadinessRecord(b, risk, readiness, status, "synthetic"))
-    end
-    return XAIReportBundle(metadata, routers, experts, tensor_metrics, saaq, "synthetic")
-end
-
-function load_report_bundle(path_or_dir::AbstractString = "")::XAIReportBundle
-    if isempty(path_or_dir) || !isdir(path_or_dir)
-        @info "load_report_bundle: no directory or empty path → synthetic bundle (64×8)"
-        return generate_synthetic_bundle()
-    end
-    required = ["routing-report.json", "inventory.json", "stats.json", "saaq-readiness.json", "experts.json"]
-    missing = [f for f in required if !isfile(joinpath(path_or_dir, f))]
-    if !isempty(missing)
-        @warn "Missing $(length(missing)) report file(s): $(join(missing, ", ")); using synthetic"
-        return generate_synthetic_bundle()
-    end
-    # Real reports present → attempt parse (schema mapping can be extended later)
-    try
-        # For MVP we still return a rich synthetic but mark as partial so UI shows provenance
-        bundle = generate_synthetic_bundle()
-        bundle = XAIReportBundle(bundle.metadata, bundle.routers, bundle.experts,
-                                 bundle.tensor_metrics, bundle.saaq, "partial")
-        @info "Loaded real report directory (partial parse for MVP)"
-        return bundle
-    catch err
-        @warn "Parse error on real reports: $err; falling back to synthetic"
-        return generate_synthetic_bundle()
-    end
-end
+const _REQUIRED_REPORT_FILES = (
+    "routing-report.json",
+    "inventory.json",
+    "stats.json",
+    "saaq-readiness.json",
+    "experts.json",
+)
 
 function load_json_report(path::AbstractString)
     return JSON3.read(read(path, String))
+end
+
+# Resolve a user-supplied path to the directory that actually contains the 5 JSONs.
+# Accepts either:
+#   - a directory containing the 5 files directly, or
+#   - a "run root" with `exports/<ckpt_label>/` underneath.
+function _resolve_reports_dir(path::AbstractString)::String
+    if all(isfile(joinpath(path, f)) for f in _REQUIRED_REPORT_FILES)
+        return abspath(path)
+    end
+    exports_root = joinpath(path, "exports")
+    if isdir(exports_root)
+        for entry in readdir(exports_root; join = true)
+            if isdir(entry) && all(isfile(joinpath(entry, f)) for f in _REQUIRED_REPORT_FILES)
+                return abspath(entry)
+            end
+        end
+    end
+    return abspath(path)
+end
+
+_as_int(x) = x === nothing ? 0 : Int(x)
+_as_int_block(x) = x === nothing ? 0 : Int(x) + 1  # JSON is 0-based; Julia is 1-based
+_as_f32(x) = x === nothing ? 0f0 : Float32(x)
+_as_str(x) = x === nothing ? "" : String(x)
+_shape_str(s) = s === nothing ? "" : join(string.(s), "x")
+
+function parse_inventory_metadata(json)::Dict{String,Any}
+    inferred = get(json, :inferred, nothing)
+    metadata = Dict{String,Any}(
+        "model_family"   => _as_str(get(json, :model_family, "")),
+        "checkpoint"     => _as_str(get(json, :checkpoint_path, "")),
+        "shard_count"    => _as_int(get(json, :shard_count, 0)),
+        "schema_version" => _as_int(get(json, :schema_version, 0)),
+    )
+    if inferred !== nothing
+        metadata["d_model"]    = _as_int(get(inferred, :d_model, 6144))
+        metadata["n_experts"]  = _as_int(get(inferred, :n_experts, 8))
+        metadata["n_blocks"]   = _as_int(get(inferred, :n_blocks, 64))
+        metadata["vocab_size"] = _as_int(get(inferred, :vocab_size, 0))
+        metadata["d_ff"]       = _as_int(get(inferred, :d_ff, 0))
+    else
+        metadata["d_model"]   = 6144
+        metadata["n_experts"] = 8
+        metadata["n_blocks"]  = 64
+    end
+    metadata["top_k"] = 2
+    return metadata
+end
+
+function parse_routing_report(json)::Vector{RouterRecord}
+    candidates = get(json, :candidate_tensors, [])
+    out = RouterRecord[]
+    sizehint!(out, length(candidates))
+    for c in candidates
+        push!(out, RouterRecord(
+            _as_int_block(get(c, :block_index, nothing)),
+            _as_int(get(c, :block_slot, 0)),
+            _shape_str(get(c, :shape, nothing)),
+            _as_str(get(c, :orientation, "")),
+            _as_int(get(c, :linked_expert_count, 0)),
+            _as_str(get(c, :kind_label, "")),
+            _as_str(get(c, :structural_name, "")),
+        ))
+    end
+    return out
+end
+
+function parse_experts(json)::Vector{ExpertRecord}
+    blocks = get(json, :blocks, [])
+    out = ExpertRecord[]
+    for blk in blocks
+        block_idx = _as_int_block(get(blk, :block_index, nothing))
+        for ex in get(blk, :experts, [])
+            tensors = get(ex, :tensors, [])
+            params = 0
+            for t in tensors
+                params += _as_int(get(t, :total_elements, 0))
+            end
+            name = _as_str(get(ex, :family_label, ""))
+            if isempty(name) && !isempty(tensors)
+                name = _as_str(get(tensors[1], :structural_name, ""))
+            end
+            push!(out, ExpertRecord(
+                block_idx,
+                _as_int(get(ex, :expert_index, 0)) + 1,
+                name,
+                params,
+            ))
+        end
+    end
+    return out
+end
+
+function parse_stats_tensors(json)::Vector{TensorMetricRecord}
+    tensors = get(json, :tensors, [])
+    out = TensorMetricRecord[]
+    sizehint!(out, length(tensors))
+    for t in tensors
+        push!(out, TensorMetricRecord(
+            _as_str(get(t, :structural_name, "")),
+            _as_int_block(get(t, :block_index, nothing)),
+            _shape_str(get(t, :shape, nothing)),
+            _as_f32(get(t, :l2_norm, 0)),
+            _as_f32(get(t, :rms, 0)),
+        ))
+    end
+    return out
+end
+
+function parse_saaq_readiness(json)::Vector{SAAQReadinessRecord}
+    layers = get(json, :layer_readiness, [])
+    out = SAAQReadinessRecord[]
+    sizehint!(out, length(layers))
+    for l in layers
+        critical = get(l, :routing_critical, false)
+        push!(out, SAAQReadinessRecord(
+            _as_int_block(get(l, :block_index, nothing)),
+            _as_f32(get(l, :max_risk_score, 0)),
+            _as_f32(get(l, :mean_readiness_score, 0)),
+            critical === true ? "critical" : "ok",
+            _as_str(get(l, :label, "")),
+        ))
+    end
+    return out
+end
+
+function load_report_bundle(path::AbstractString)::XAIReportBundle
+    isempty(path) && throw(ArgumentError(
+        "load_report_bundle: path is required (no synthetic fallback)"))
+    isdir(path) || throw(ArgumentError(
+        "load_report_bundle: not a directory: $path"))
+
+    dir = _resolve_reports_dir(path)
+    missing_files = [f for f in _REQUIRED_REPORT_FILES if !isfile(joinpath(dir, f))]
+    isempty(missing_files) || throw(ArgumentError(
+        "Missing required xai-dissect JSON file(s) in $dir: $(join(missing_files, ", "))"))
+
+    inv  = load_json_report(joinpath(dir, "inventory.json"))
+    rr   = load_json_report(joinpath(dir, "routing-report.json"))
+    st   = load_json_report(joinpath(dir, "stats.json"))
+    saaq = load_json_report(joinpath(dir, "saaq-readiness.json"))
+    exps = load_json_report(joinpath(dir, "experts.json"))
+
+    metadata = parse_inventory_metadata(inv)
+    metadata["reports_dir"] = dir
+
+    return XAIReportBundle(
+        metadata,
+        parse_routing_report(rr),
+        parse_experts(exps),
+        parse_stats_tensors(st),
+        parse_saaq_readiness(saaq),
+        "real",
+    )
 end
