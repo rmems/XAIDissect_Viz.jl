@@ -5,7 +5,10 @@
 #   C. Right inspector panel (logits, probs, entropy, SAAQ, provenance)
 #   D. Bottom timeline (token slider + play/pause + seed)
 #
-# Works with real or fully synthetic XAIReportBundle. CPU always, CUDA optional.
+# Operates on a real XAIReportBundle parsed from xai-dissect JSON.
+# Router dynamics are simulated (synthetic W,h) on top of real metadata so the
+# atmosphere stays animated; weights are never loaded from disk.
+# CPU always, CUDA optional.
 
 using GLMakie, GraphMakie, Graphs, Makie, Observables
 
