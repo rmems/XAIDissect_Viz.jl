@@ -32,10 +32,8 @@ jobs:
         run: |
           xvfb-run -a julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
 
-      - name: Load package
-        run: |
-          xvfb-run -a julia --project=. -e 'using XAIDissectViz'
+      - name: Headless smoke load (no display required)
+        run: julia --project=. -e 'using XAIDissectViz; println("XAIDissectViz loaded headlessly")'
 
       - name: Run tests
-        run: |
-          xvfb-run -a julia --project=. -e 'using Test; include("test/runtests.jl")'
+        run: julia --project=. -e 'using Test; include("test/runtests.jl")'

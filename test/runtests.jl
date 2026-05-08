@@ -104,6 +104,23 @@ end
     @test isdefined(XAIDissectViz, :RouterFrame)
 end
 
+@testset "Headless: non-visual API works without GLMakie loaded" begin
+    glmakie_id = Base.PkgId(Base.UUID("e9467ef8-e4e7-5192-8a1a-b1aee30e663a"), "GLMakie")
+    @test !haskey(Base.loaded_modules, glmakie_id)
+
+    bundle = _minimal_bundle()
+    frame = simulate_router_frame(bundle, 2, 3)
+    @test length(frame.probs) == 8
+
+    h = ones(Float32, 4); W = ones(Float32, 4, 2)
+    @test isapprox(sum(router_probs(router_logits(CPUBackend(), h, W))), 1.0f0; atol=1f-5)
+    @test topk_experts(Float32[0.1, 0.5, 0.4], 1) == [2]
+
+    @test_throws ArgumentError load_report_bundle("")
+
+    @test !haskey(Base.loaded_modules, glmakie_id)
+end
+
 @testset "load_json_report" begin
     mktempdir() do tmpdir
         path = joinpath(tmpdir, "tiny.json")

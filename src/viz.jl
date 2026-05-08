@@ -9,10 +9,29 @@
 # Router dynamics are simulated (synthetic W,h) on top of real metadata so the
 # atmosphere stays animated; weights are never loaded from disk.
 # CPU always, CUDA optional.
+#
+# IMPORTANT: GLMakie / GraphMakie / Graphs / Observables are intentionally
+# NOT imported at module load time. They are loaded on demand inside
+# `launch_atmosphere`, so `using XAIDissectViz` works on headless servers
+# (no DISPLAY, no OpenGL) and the non-visual API
+# (load_report_bundle, simulate_router_frame, router_logits, router_probs,
+# topk_experts) stays callable without a UI stack.
 
-using GLMakie, GraphMakie, Graphs, Makie, Observables
-
+# Public, lazy-loading entry point. Loads GLMakie & friends on first call and
+# raises a clear error if they (or the underlying display/OpenGL context) are
+# unavailable. The actual implementation lives in `_launch_atmosphere`.
 function launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = CPUBackend())
+    try
+        @eval XAIDissectViz using GLMakie, GraphMakie, Graphs, Observables
+    catch err
+        error("launch_atmosphere requires GLMakie, GraphMakie, Graphs, and Observables, " *
+              "plus a working display / OpenGL context. On headless servers wrap the " *
+              "Julia process in xvfb-run. Underlying error: $err")
+    end
+    return Base.invokelatest(_launch_atmosphere, bundle; backend=backend)
+end
+
+function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = CPUBackend())
     n_blocks = get(bundle.metadata, "n_blocks", 64)
     n_experts = get(bundle.metadata, "n_experts", 8)
 
