@@ -25,8 +25,10 @@ end
 
 function simulate_router_frame(bundle::XAIReportBundle, block::Int, token_idx::Int;
                                backend::ComputeBackend = CPUBackend())::RouterFrame
-    d_model = get(bundle.metadata, "d_model", 6144)::Int
-    n_experts = get(bundle.metadata, "n_experts", 8)::Int
+    haskey(bundle.metadata, "d_model")  || throw(ArgumentError("bundle.metadata missing \"d_model\""))
+    haskey(bundle.metadata, "n_experts") || throw(ArgumentError("bundle.metadata missing \"n_experts\""))
+    d_model = bundle.metadata["d_model"]::Int
+    n_experts = bundle.metadata["n_experts"]::Int
 
     # Reproducible per-block router weights (never loads real weights)
     Random.seed!(hash(("W", block, d_model, n_experts)))
