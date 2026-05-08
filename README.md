@@ -8,23 +8,11 @@
 - Simulated router dynamics (logits, top-2 selection, activity) are clearly labeled "synthetic" when real reports are absent.
 - CPU path always works. CUDA.jl accelerates router simulation and future visual kernels when available.
 
-## Current MVP (feat/router-cpu-cuda-backends)
-- Typed data model: `XAIReportBundle`, `RouterRecord`, `ExpertRecord`, `SAAQReadinessRecord`, `RouterFrame`, etc.
-- `load_report_bundle(path)` — parses the 5 standard xai-dissect JSONs or builds a rich **in-memory synthetic bundle** (no fixture files committed).
-- Full interactive GLMakie window with four regions:
-  - **A. Global MoE Map**: 64×8 heatmap of expert activity + side risk/SAAQ strip. Click rows to select block.
-  - **B. Selected Block Graph**: input → router (6144→8 logits) → 8 experts (top-2 glow/pulse) → merge/output.
-  - **C. Inspector**: live logits, probabilities, entropy, confidence, router risk, readiness status, provenance.
-  - **D. Timeline**: token 0–300 slider, Play/Pause loop, random seed control.
-- `simulate_router_frame(bundle, block, token; backend)` — reproducible synthetic routing using existing `router_logits` / `router_probs` / `topk_experts`.
-- Backend: `CPUBackend()` (default) or `CUDABackend()` (auto-fallback with warning if CUDA unavailable).
-- One small practical CUDA activity helper pattern included.
-
 ## Quick start
 ```julia
 using XAIDissectViz
 
-bundle = load_report_bundle()                    # synthetic 64×8 (or pass real report dir)
+bundle = load_report_bundle()                    # pass real report dir)
 backend = has_cuda() ? CUDABackend() : CPUBackend()
 launch_atmosphere(bundle; backend = backend)
 ```
@@ -48,4 +36,14 @@ XAIDissectViz uses CUDA.jl for optional GPU acceleration of router simulation an
 
 ---
 
-**Status**: MVP complete on `feat/router-cpu-cuda-backends`. Closes GitHub issue #1 (typed structs + report loading).
+**Status**: CPU/CUDA backends being added on `feat/router-cpu-cuda-backends` branch and GitHub issue #1 (Load xai-dissect JSON reports into typed Julia structs).
+- CPU router logits/probaility/top-k utilities
+- JSON report loader scaffold
+- Intial 'RouterRecord' data structure
+
+**Roadmap**: Create visual representation Grok 1 open weights, for eductional purposes.
+- Load full 'xai-dissect' json reports
+- Visualize router, blocks and experts
+- Render router risk and readiness heatmap
+- Simulate router logits and tok-k experts selection
+- Build an interactive GLMakie Grok-1 atmosphere view
