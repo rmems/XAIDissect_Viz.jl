@@ -23,21 +23,22 @@ end
 
 # --- Router simulation for atmosphere timeline ---
 
+# Local RNGs only — never mutate Julia's global RNG. The UI seed parameter
+# fully determines the (synthetic, viz-only) router weights and hidden state.
 function simulate_router_frame(bundle::XAIReportBundle, block::Int, token_idx::Int;
-                               backend::ComputeBackend = CPUBackend())::RouterFrame
+                               backend::ComputeBackend = CPUBackend(),
+                               seed::Integer = 42)::RouterFrame
     haskey(bundle.metadata, "d_model")  || throw(ArgumentError("bundle.metadata missing \"d_model\""))
     haskey(bundle.metadata, "n_experts") || throw(ArgumentError("bundle.metadata missing \"n_experts\""))
     d_model = bundle.metadata["d_model"]::Int
     n_experts = bundle.metadata["n_experts"]::Int
 
-    # Reproducible per-block router weights (never loads real weights)
-    Random.seed!(hash(("W", block, d_model, n_experts)))
-    W = randn(Float32, d_model, n_experts) .* 0.018f0
+    rng_W = Xoshiro(hash((seed, "W", block, d_model, n_experts)))
+    W = randn(rng_W, Float32, d_model, n_experts) .* 0.018f0
 
-    # Token-dependent hidden state (synthetic, visual only)
-    Random.seed!(hash(("h", token_idx, block)))
+    rng_h = Xoshiro(hash((seed, "h", block, token_idx)))
     phase = 2π * (token_idx % 50) / 50
-    h = randn(Float32, d_model) .* 0.08f0 .+ sin(phase) * 0.25f0 .+ cos(phase*1.7) * 0.12f0
+    h = randn(rng_h, Float32, d_model) .* 0.08f0 .+ sin(phase) * 0.25f0 .+ cos(phase*1.7) * 0.12f0
 
     logits = router_logits(backend, h, W)
     probs = router_probs(logits)
@@ -45,10 +46,10 @@ function simulate_router_frame(bundle::XAIReportBundle, block::Int, token_idx::I
 
     entropy = -sum(@. probs * log(max(probs, 1f-12)))
 
-    # Activity vector for heatmap glow (boost top-2, mild noise)
+    rng_a = Xoshiro(hash((seed, "a", block, token_idx)))
     activity = fill(0.08f0, n_experts)
     activity[topk] .+= 0.65f0
-    activity .+= 0.03f0 .* rand(Float32, n_experts)
+    activity .+= 0.03f0 .* rand(rng_a, Float32, n_experts)
     clamp!(activity, 0f0, 1f0)
 
     RouterFrame(block, token_idx, logits, probs, topk, entropy, activity)

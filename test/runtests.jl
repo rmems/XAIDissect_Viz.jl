@@ -64,6 +64,26 @@ end
     @test all(0 .<= frame.expert_activity .<= 1)
 end
 
+@testset "simulate_router_frame: seed honors UI input" begin
+    bundle = _minimal_bundle()
+    a = simulate_router_frame(bundle, 3, 5; seed=1)
+    b = simulate_router_frame(bundle, 3, 5; seed=1)
+    c = simulate_router_frame(bundle, 3, 5; seed=2)
+    @test a.logits == b.logits          # same seed -> deterministic
+    @test a.logits != c.logits          # different seed -> different frame
+end
+
+@testset "simulate_router_frame: does not mutate global RNG" begin
+    using Random
+    bundle = _minimal_bundle()
+    Random.seed!(123)
+    before = rand(UInt64)
+    Random.seed!(123)
+    simulate_router_frame(bundle, 1, 0; seed=999)
+    after = rand(UInt64)
+    @test before == after               # global RNG state untouched
+end
+
 @testset "CUDA path (if available)" begin
     if has_cuda()
         @test has_cuda() == true

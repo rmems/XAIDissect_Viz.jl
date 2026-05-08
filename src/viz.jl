@@ -22,7 +22,11 @@ function launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = CP
     activity = Observable(zeros(Float32, n_blocks, n_experts))
     is_playing = Observable(false)
     seed = Observable(42)
-    current_frame = Observable(simulate_router_frame(bundle, 1, 0; backend=backend))
+    current_frame = Observable(simulate_router_frame(bundle, 1, 0; backend=backend, seed=seed[]))
+
+    # SAAQ rows are keyed by block id, not vector position. Some reports
+    # include a leading "unassigned" entry or omit blocks entirely.
+    saaq_by_block = Dict{Int, SAAQReadinessRecord}(s.block => s for s in bundle.saaq)
 
     # Seed initial activity from first frame
     on(current_frame) do frame
@@ -127,7 +131,7 @@ function launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = CP
 
     onany(selected_block, current_frame) do blk, frame
         if frame.block != blk
-            new_frame = simulate_router_frame(bundle, blk, token_idx[]; backend=backend)
+            new_frame = simulate_router_frame(bundle, blk, token_idx[]; backend=backend, seed=seed[])
             current_frame[] = new_frame
         else
             refresh_graph!(frame)
@@ -143,9 +147,12 @@ function launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = CP
     Label(inspector[5, 1], lift(f -> "Probs: $(round.(f.probs; digits=3))", current_frame))
     Label(inspector[6, 1], lift(f -> "Entropy: $(round(f.entropy; digits=4))", current_frame))
     Label(inspector[7, 1], lift(selected_block) do b
-        idx = clamp(b, 1, length(bundle.saaq))
-        r = bundle.saaq[idx]
-        "Risk: $(round(r.risk_score; digits=3)) | Readiness: $(round(r.readiness; digits=3)) | $(r.status)"
+        r = get(saaq_by_block, b, nothing)
+        if r === nothing
+            "Risk: n/a | Readiness: n/a | (no SAAQ row for block $b)"
+        else
+            "Risk: $(round(r.risk_score; digits=3)) | Readiness: $(round(r.readiness; digits=3)) | $(r.status)"
+        end
     end)
     Label(inspector[8, 1], "Provenance: $(bundle.provenance) — simulated router dynamics on real metadata")
     Label(inspector[9, 1], "Click heatmap row or use slider to change block", fontsize = 10, color = :gray)
@@ -155,7 +162,7 @@ function launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = CP
     token_slider = Slider(timeline[1, 1], range = 0:300, startvalue = 0, width = 600)
     on(token_slider.value) do v
         token_idx[] = v
-        new_frame = simulate_router_frame(bundle, selected_block[], v; backend=backend)
+        new_frame = simulate_router_frame(bundle, selected_block[], v; backend=backend, seed=seed[])
         current_frame[] = new_frame
     end
 
@@ -178,13 +185,17 @@ function launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = CP
     on(seed_box.stored_string) do s
         try
             seed[] = parse(Int, s)
-            Random.seed!(seed[])
         catch
         end
     end
+    # Re-simulate the current (block, token) when the user changes the seed
+    on(seed) do _
+        current_frame[] = simulate_router_frame(bundle, selected_block[], token_idx[];
+                                                backend=backend, seed=seed[])
+    end
 
     # Initial frame
-    current_frame[] = simulate_router_frame(bundle, selected_block[], token_idx[]; backend=backend)
+    current_frame[] = simulate_router_frame(bundle, selected_block[], token_idx[]; backend=backend, seed=seed[])
     refresh_graph!(current_frame[])
 
     # Final layout tweaks
