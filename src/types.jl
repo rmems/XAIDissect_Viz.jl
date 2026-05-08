@@ -1,6 +1,6 @@
 # Data model types for XAIDissectViz
-# These structs represent xai-dissect report data and simulation state.
-# Supports real JSON reports or fully in-memory synthetic bundles (64 blocks, 8 experts).
+# Typed view of xai-dissect JSON reports (inventory, routing, stats, saaq, experts)
+# plus router-simulation state used by the interactive visualization.
 
 struct RouterRecord
     block::Int
@@ -41,7 +41,7 @@ struct XAIReportBundle
     experts::Vector{ExpertRecord}
     tensor_metrics::Vector{TensorMetricRecord}
     saaq::Vector{SAAQReadinessRecord}
-    provenance::String  # "real", "partial", or "synthetic"
+    provenance::String  # always "real" once load_report_bundle succeeds
 end
 
 struct RouterFrame
