@@ -1,6 +1,26 @@
 using Test
 using XAIDissectViz
 
+# Minimal real-shaped bundle built by hand from struct constructors.
+# No JSON, no random data. Used for tests that need a bundle but should
+# not depend on a real xai-dissect report directory being present.
+function _minimal_bundle()
+    meta = Dict{String,Any}(
+        "d_model" => 6144,
+        "n_experts" => 8,
+        "n_blocks" => 64,
+        "top_k" => 2,
+    )
+    return XAIReportBundle(
+        meta,
+        RouterRecord[],
+        ExpertRecord[],
+        TensorMetricRecord[],
+        SAAQReadinessRecord[],
+        "real",
+    )
+end
+
 @testset "Router core (CPU)" begin
     h = ones(Float32, 4)
     W = ones(Float32, 4, 2)
@@ -11,21 +31,29 @@ using XAIDissectViz
     @test topk_experts(probs, 1)[1] in 1:2
 end
 
-@testset "Synthetic bundle & load_report_bundle" begin
-    bundle = load_report_bundle()  # empty path → synthetic
-    @test bundle.provenance == "synthetic"
-    @test length(bundle.routers) == 64
-    @test length(bundle.experts) == 64 * 8
-    @test haskey(bundle.metadata, "d_model")
-    @test bundle.metadata["n_blocks"] == 64
+@testset "load_report_bundle: strict errors" begin
+    @test_throws ArgumentError load_report_bundle("")
+    @test_throws ArgumentError load_report_bundle("/tmp/xai_dissect_does_not_exist_$(rand(UInt64))")
+end
 
-    # Bad path still returns valid synthetic (no crash)
-    bad = load_report_bundle("/tmp/does_not_exist_$(rand())")
-    @test bad.provenance == "synthetic"
+@testset "load_report_bundle: real reports (gated)" begin
+    reports_dir = get(ENV, "XAI_DISSECT_REPORTS", "")
+    if !isempty(reports_dir) && isdir(reports_dir)
+        bundle = load_report_bundle(reports_dir)
+        @test bundle.provenance == "real"
+        @test bundle.metadata["d_model"] == 6144
+        @test bundle.metadata["n_experts"] == 8
+        @test bundle.metadata["n_blocks"] == 64
+        @test length(bundle.routers) >= 1
+        @test length(bundle.saaq) >= 1
+    else
+        @info "XAI_DISSECT_REPORTS not set or invalid; skipping real-load test"
+        @test true
+    end
 end
 
 @testset "simulate_router_frame" begin
-    bundle = load_report_bundle()
+    bundle = _minimal_bundle()
     frame = simulate_router_frame(bundle, 7, 42; backend=CPUBackend())
     @test frame.block == 7
     @test frame.token_idx == 42
@@ -39,7 +67,7 @@ end
 @testset "CUDA path (if available)" begin
     if has_cuda()
         @test has_cuda() == true
-        bundle = load_report_bundle()
+        bundle = _minimal_bundle()
         frame = simulate_router_frame(bundle, 3, 9; backend=CUDABackend())
         @test length(frame.topk) == 2
     else
