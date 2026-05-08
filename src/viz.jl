@@ -77,7 +77,8 @@ function launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = CP
                  [(2.0, y) for y in range(-1.2, 1.2, length = n_experts)]...,  # experts
                  (3.5, 0.0) ]                            # merge/output
     node_colors = Observable(fill(:gray, 2 + n_experts + 1))
-    node_sizes  = Observable(fill(18, 2 + n_experts + 1))
+    # Float32 so the pulse animation (32 + 6*sin(...)) doesn't InexactError
+    node_sizes  = Observable(fill(18.0f0, 2 + n_experts + 1))
 
     # Edges (input->router, router->experts, experts->output)
     edge_from = Int[]; edge_to = Int[]
@@ -105,19 +106,19 @@ function launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = CP
         for i in 1:length(node_colors[])
             if i == 2
                 node_colors[][i] = :royalblue   # router
-                node_sizes[][i] = 26
+                node_sizes[][i] = 26.0f0
             elseif i > 2 && i <= 2 + n_experts
                 eid = i - 2
                 if eid in top2
                     node_colors[][i] = :limegreen
-                    node_sizes[][i] = 32 + 6 * sin(2π * (frame.token_idx % 30) / 30)  # pulse
+                    node_sizes[][i] = Float32(32 + 6 * sin(2π * (frame.token_idx % 30) / 30))  # pulse
                 else
                     node_colors[][i] = :dimgray
-                    node_sizes[][i] = 14
+                    node_sizes[][i] = 14.0f0
                 end
             else
                 node_colors[][i] = i == 1 ? :skyblue : :orange
-                node_sizes[][i] = 20
+                node_sizes[][i] = 20.0f0
             end
         end
         node_colors[] = node_colors[]  # notify
