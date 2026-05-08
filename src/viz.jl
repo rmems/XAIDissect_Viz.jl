@@ -61,8 +61,9 @@ function launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = CP
     end
 
     # B. Selected Block Graph (mid-left)
-    ax_graph = Axis(grid[2, 1], title = @lift("Block $(selected_block[]) — Router Graph"),
-                    aspect = DataAspect())
+    ax_graph = Axis(grid[2, 1],
+        title = lift(b -> "Block $b — Router Graph", selected_block),
+        aspect = DataAspect())
     hidedecorations!(ax_graph); hidespines!(ax_graph)
 
     # Simple node positions (input, router, 8 experts, output)
@@ -129,16 +130,17 @@ function launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = CP
     # C. Inspector Panel (right)
     inspector = grid[1:2, 4] = GridLayout()
     Label(inspector[1, 1], "Inspector", fontsize = 18, font = :bold)
-    blk_label = Label(inspector[2, 1], @lift("Block: $(selected_block[])"))
-    top2_label = Label(inspector[3, 1], @lift("Top-2 Experts: $(current_frame[].topk)"))
-    logits_label = Label(inspector[4, 1], @lift("Logits (first 4): $(round.(current_frame[].logits[1:4]; digits=3)) …"))
-    probs_label = Label(inspector[5, 1], @lift("Probs: $(round.(current_frame[].probs; digits=3))"))
-    entropy_label = Label(inspector[6, 1], @lift("Entropy: $(round(current_frame[].entropy; digits=4))"))
-    risk_label = Label(inspector[7, 1], @lift begin
-        r = bundle.saaq[selected_block[]]
+    Label(inspector[2, 1], lift(b -> "Block: $b", selected_block))
+    Label(inspector[3, 1], lift(f -> "Top-2 Experts: $(f.topk)", current_frame))
+    Label(inspector[4, 1], lift(f -> "Logits (first 4): $(round.(f.logits[1:4]; digits=3)) …", current_frame))
+    Label(inspector[5, 1], lift(f -> "Probs: $(round.(f.probs; digits=3))", current_frame))
+    Label(inspector[6, 1], lift(f -> "Entropy: $(round(f.entropy; digits=4))", current_frame))
+    Label(inspector[7, 1], lift(selected_block) do b
+        idx = clamp(b, 1, length(bundle.saaq))
+        r = bundle.saaq[idx]
         "Risk: $(round(r.risk_score; digits=3)) | Readiness: $(round(r.readiness; digits=3)) | $(r.status)"
     end)
-    prov_label = Label(inspector[8, 1], @lift("Provenance: $(bundle.provenance) — synthetic router dynamics"))
+    Label(inspector[8, 1], "Provenance: $(bundle.provenance) — simulated router dynamics on real metadata")
     Label(inspector[9, 1], "Click heatmap row or use slider to change block", fontsize = 10, color = :gray)
 
     # D. Timeline Controls (bottom)
@@ -150,7 +152,7 @@ function launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = CP
         current_frame[] = new_frame
     end
 
-    play_btn = Button(timeline[1, 2], label = @lift(is_playing[] ? "⏸ Pause" : "▶ Play"))
+    play_btn = Button(timeline[1, 2], label = lift(p -> p ? "⏸ Pause" : "▶ Play", is_playing))
     on(play_btn.clicks) do _
         is_playing[] = !is_playing[]
         if is_playing[]
