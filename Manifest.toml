@@ -2,7 +2,7 @@
 
 julia_version = "1.12.5"
 manifest_format = "2.0"
-project_hash = "ad0945d5bfaa4fbba4e032a27a48baa3e4e04bed"
+project_hash = "7c19ed4c8af2c53c311f919fb90cbad8a88884d7"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -1788,7 +1788,7 @@ uuid = "efce3f68-66dc-5838-9240-27a6d6f5f9b6"
 version = "1.1.0"
 
 [[deps.XAIDissectViz]]
-deps = ["CUDA", "DataFrames", "GLMakie", "GraphMakie", "Graphs", "JSON3", "LinearAlgebra", "Makie", "Statistics", "TOML", "Test"]
+deps = ["CUDA", "DataFrames", "GLMakie", "GraphMakie", "Graphs", "JSON3", "LinearAlgebra", "Makie", "Observables", "Random", "Statistics", "TOML", "Test"]
 path = "."
 uuid = "408e581a-c870-4889-b34e-2d2ebbf75dbd"
 version = "0.1.0"
