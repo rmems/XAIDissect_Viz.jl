@@ -45,9 +45,15 @@ function launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = CP
     hm = heatmap!(ax_map, activity, colormap = :viridis, colorrange = (0, 1))
     Colorbar(grid[1, 2], hm; label = "Expert activity")
 
-    # Risk / SAAQ side strip
+    # Risk / SAAQ side strip — align to 1:n_blocks even when bundle.saaq has
+    # extra non-block entries (e.g. "unassigned" with block_index=null/0).
     risk_ax = Axis(grid[1, 3], title = "Router Risk", yticksvisible = false, xticksvisible = false)
-    risk_vals = [s.risk_score for s in bundle.saaq]
+    risk_vals = zeros(Float32, n_blocks)
+    for s in bundle.saaq
+        if 1 <= s.block <= n_blocks
+            risk_vals[s.block] = s.risk_score
+        end
+    end
     barplot!(risk_ax, 1:n_blocks, risk_vals; direction = :x, color = risk_vals, colormap = :RdYlGn_5)
     linkyaxes!(ax_map, risk_ax)
 
