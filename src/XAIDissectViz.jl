@@ -14,7 +14,7 @@ export load_report_bundle,
        simulate_router_frame,
        CPUBackend, CUDABackend, has_cuda,
        router_logits, router_probs, topk_experts,
-       XAIReportBundle, RouterRecord, ExpertRecord, SAAQReadinessRecord,
-       RouterFrame, AtmosphereState
+       XAIReportBundle, RouterRecord, ExpertRecord, TensorMetricRecord,
+       SAAQReadinessRecord, RouterFrame, AtmosphereState
 
 end
