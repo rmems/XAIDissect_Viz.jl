@@ -29,7 +29,8 @@ jobs:
           sudo apt-get install -y xvfb libgl1 mesa-utils
 
       - name: Instantiate
-        run: julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
+        run: |
+          xvfb-run -a julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
 
       - name: Load package
         run: |
