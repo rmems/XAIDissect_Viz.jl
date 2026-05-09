@@ -51,8 +51,11 @@ function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = C
 
     cuda_avail = try
         # Probe via a fresh `using` so we never crash when CUDA is absent.
+        # `@eval` runs at module top-level (latest world), so `CUDA.functional`
+        # is resolved against the just-loaded CUDA module rather than against
+        # whatever bindings were visible when this function was compiled.
         @eval XAIDissectViz using CUDA
-        Base.invokelatest(getfield, XAIDissectViz, :CUDA).functional()
+        @eval XAIDissectViz CUDA.functional()
     catch
         false
     end
