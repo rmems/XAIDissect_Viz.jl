@@ -55,7 +55,7 @@ _as_int(x) = x === nothing ? 0 : Int(x)
 _as_int_block(x) = x === nothing ? 0 : Int(x) + 1  # JSON is 0-based; Julia is 1-based
 _as_f32(x) = x === nothing ? 0f0 : Float32(x)
 _as_str(x) = x === nothing ? "" : String(x)
-_shape_str(s) = s === nothing ? "" : join(string.(s), "x")
+_shape_str(s) = s === nothing ? "" : s isa AbstractString ? String(s) : join(string.(s), "x")
 
 function parse_inventory_metadata(json)::Dict{String,Any}
     inferred = get(json, :inferred, nothing)

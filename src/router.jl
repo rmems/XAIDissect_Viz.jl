@@ -1,5 +1,7 @@
 using Random
 
+const _W_CACHE = Dict{Tuple{Int,Int,Int,Int}, Matrix{Float32}}()
+
 function router_logits(::CPUBackend, h::AbstractVector, W::AbstractMatrix)
     return vec(transpose(h) * W)
 end
@@ -33,8 +35,11 @@ function simulate_router_frame(bundle::XAIReportBundle, block::Int, token_idx::I
     d_model = bundle.metadata["d_model"]::Int
     n_experts = bundle.metadata["n_experts"]::Int
 
-    rng_W = Xoshiro(hash((seed, "W", block, d_model, n_experts)))
-    W = randn(rng_W, Float32, d_model, n_experts) .* 0.018f0
+    key = (Int(seed), block, d_model, n_experts)
+    W = get!(_W_CACHE, key) do
+        rng_W = Xoshiro(hash((seed, "W", block, d_model, n_experts)))
+        randn(rng_W, Float32, d_model, n_experts) .* 0.018f0
+    end
 
     rng_h = Xoshiro(hash((seed, "h", block, token_idx)))
     phase = 2π * (token_idx % 50) / 50

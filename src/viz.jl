@@ -41,6 +41,7 @@ function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = C
     activity = Observable(zeros(Float32, n_blocks, n_experts))
     is_playing = Observable(false)
     seed = Observable(42)
+    play_task = Ref{Union{Nothing,Task}}(nothing)
     current_frame = Observable(simulate_router_frame(bundle, 1, 0; backend=backend, seed=seed[]))
 
     # SAAQ rows are keyed by block id, not vector position. Some reports
@@ -189,12 +190,19 @@ function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = C
     on(play_btn.clicks) do _
         is_playing[] = !is_playing[]
         if is_playing[]
-            @async begin
-                while is_playing[]
-                    token_idx[] += 1
-                    if token_idx[] > 300; token_idx[] = 0; end
-                    token_slider.value[] = token_idx[]   # triggers the on above
-                    sleep(0.08)  # ~12 fps
+            if play_task[] !== nothing && !istaskdone(play_task[])
+                schedule(play_task[], InterruptException(); error=true)
+            end
+            play_task[] = @async begin
+                try
+                    while is_playing[]
+                        token_idx[] += 1
+                        if token_idx[] > 300; token_idx[] = 0; end
+                        token_slider.value[] = token_idx[]
+                        sleep(0.08)
+                    end
+                catch e
+                    e isa InterruptException || rethrow(e)
                 end
             end
         end
@@ -224,6 +232,14 @@ function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = C
     rowsize!(grid, 2, Relative(0.38))
 
     display(fig)
+    on(events(fig).window_open) do open
+        if !open
+            is_playing[] = false
+            if play_task[] !== nothing && !istaskdone(play_task[])
+                schedule(play_task[], InterruptException(); error=true)
+            end
+        end
+    end
     @info "Grok-1 MoE Atmosphere launched — use mouse on heatmap, play button, slider. Close window to exit."
     return fig
 end
