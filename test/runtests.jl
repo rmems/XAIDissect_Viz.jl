@@ -166,5 +166,19 @@ end
         @test obj[:shape] == "6144x8"
         @test obj[:d_model] == 6144
     end
-    @test_throws SystemError XAIDissectViz.load_json_report("/tmp/xaiviz_does_not_exist_$(rand(UInt64)).json")
+    missing_path = "/tmp/xaiviz_does_not_exist_$(rand(UInt64)).json"
+    @test_throws ArgumentError XAIDissectViz.load_json_report(missing_path)
+end
+
+@testset "load_report_bundle: multiple checkpoint exports root" begin
+    mktempdir() do root
+        required = [
+            "routing-report.json",
+            "inventory.json",
+            "stats.json",
+            "saaq-readiness.json",
+            "experts.json"]
+
+        @test_throws ArgumentError XAIDissectViz.load_report_bundle(root)
+    end
 end

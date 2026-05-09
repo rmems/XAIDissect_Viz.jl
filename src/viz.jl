@@ -54,7 +54,7 @@ function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = C
     end
 
     # --- Figure & Layout ---
-    fig = Figure(size = (1280, 820), title = "Grok-1 MoE Atmosphere — XAIDissectViz")
+    fig = Makie.Figure(size = (1280, 820), title = "Grok-1 MoE Atmosphere — XAIDissectViz")
     grid = fig[1,1] = GridLayout(tellwidth = false, tellheight = false)
 
     # A. Global MoE Map (top-left)

@@ -14,7 +14,10 @@ const _REQUIRED_REPORT_FILES = (
 )
 
 function load_json_report(path::AbstractString)
-    return JSON3.read(read(path, String))
+    isfile(path) || throw(ArgumentError("JSON report not found: $path"))
+    return open(path, "r") do io
+        JSON3.read(io)
+    end
 end
 
 # Resolve a user-supplied path to the directory that actually contains the 5 JSONs.
