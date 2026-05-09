@@ -201,3 +201,174 @@ end
         @test_throws ArgumentError XAIDissectViz.load_report_bundle(root)
     end
 end
+
+# --- CUDA atmosphere engine -------------------------------------------------
+#
+# CUDA-guarded tests use a local probe rather than `has_cuda()` because the
+# probe is robust against Julia 1.12's stricter world-age semantics. CPU-only
+# CI never enters the CUDA branches; the CPU-side assertions still run.
+function _cuda_functional()
+    try
+        @eval using CUDA
+        return @eval CUDA.functional()
+    catch
+        return false
+    end
+end
+
+@testset "update_activity_field! CPU: values stay in [0,1]" begin
+    n_blocks, n_experts, top_k = 16, 8, 2
+    activity = rand(Float32, n_blocks, n_experts) .* 0.5f0
+    topk = rand(Int32(1):Int32(n_experts), n_blocks, top_k)
+    for _ in 1:50
+        update_activity_field!(CPUBackend(), activity, topk; decay=0.92f0, boost=0.55f0)
+        @test all(0f0 .<= activity .<= 1f0)
+    end
+end
+
+@testset "update_activity_field! CPU: selected top-k experts receive boost" begin
+    n_blocks, n_experts, top_k = 8, 8, 2
+    activity = zeros(Float32, n_blocks, n_experts)
+    topk = repeat(Int32[3 5], n_blocks)  # every block selects experts 3 and 5
+    pre = copy(activity)
+    update_activity_field!(CPUBackend(), activity, topk; decay=0.92f0, boost=0.55f0)
+    for b in 1:n_blocks
+        @test activity[b, 3] > pre[b, 3]
+        @test activity[b, 5] > pre[b, 5]
+    end
+end
+
+@testset "update_activity_field! CPU: inactive experts decay" begin
+    n_blocks, n_experts, top_k = 8, 8, 2
+    activity = fill(0.7f0, n_blocks, n_experts)
+    topk = repeat(Int32[3 5], n_blocks)  # only experts 3 and 5 get boosted
+    pre = copy(activity)
+    update_activity_field!(CPUBackend(), activity, topk; decay=0.92f0, boost=0.0f0)
+    for b in 1:n_blocks, e in 1:n_experts
+        if e == 3 || e == 5
+            continue  # boosted entries explicitly excluded
+        end
+        @test activity[b, e] < pre[b, e]
+    end
+end
+
+@testset "update_activity_field! CPU vs CUDA match (gated)" begin
+    if _cuda_functional()
+        # `import` (not `using`) avoids the `CUDABackend` name collision with
+        # XAIDissectViz; we always qualify XAIDissectViz.CUDABackend below.
+        @eval import CUDA
+        CuArr = @eval CUDA.CuArray
+        synchronize_fn = @eval CUDA.synchronize
+        host_array_fn = Array
+        n_blocks, n_experts, top_k = 64, 8, 2
+        rng = Xoshiro(7)
+        A = rand(rng, Float32, n_blocks, n_experts) .* 0.3f0
+        T = rand(rng, Int32(1):Int32(n_experts), n_blocks, top_k)
+        A_cpu = copy(A); A_gpu = CuArr(copy(A)); T_gpu = CuArr(T)
+        for _ in 1:5
+            update_activity_field!(XAIDissectViz.CPUBackend(), A_cpu, T)
+            update_activity_field!(XAIDissectViz.CUDABackend(), A_gpu, T_gpu)
+        end
+        synchronize_fn()
+        @test isapprox(host_array_fn(A_gpu), A_cpu; atol=1f-5)
+    else
+        @info "CUDA not functional — skipping CPU/CUDA isapprox test"
+        @test true
+    end
+end
+
+@testset "RouterFrameCache: dimensions and exact contracts" begin
+    bundle = _minimal_bundle()
+    cache = build_frame_cache(bundle; n_tokens=20, seed=42)
+    @test cache isa RouterFrameCache
+    @test cache.n_blocks == 64
+    @test cache.n_experts == 8
+    @test cache.top_k == 2
+    @test cache.n_tokens == 21  # tokens 0..n_tokens inclusive
+    @test size(cache.topk) == (64, 2, 21)
+    @test size(cache.entropy) == (64, 21)
+    @test size(cache.confidence) == (64, 21)
+
+    M = topk_matrix_for_token(cache, 5)
+    @test size(M) == (64, 2)
+    @test eltype(M) === Int32
+    @test all(1 .<= M .<= 8)
+
+    A = activity_matrix_for_token(cache, 7)
+    @test size(A) == (64, 8)
+    @test all(0f0 .<= A .<= 1f0)
+
+    f = get_frame(cache, 3, 5)
+    @test f.block == 3
+    @test f.token_idx == 5
+    @test length(f.topk) == 2
+
+    @test_throws BoundsError get_frame(cache, 3, 999)
+    @test_throws BoundsError get_frame(cache, 999, 0)
+end
+
+@testset "simulate_router_topk_batch: deterministic same seed; different seed differs" begin
+    bundle = _minimal_bundle()
+    a = simulate_router_topk_batch(bundle, 3; seed=1)
+    b = simulate_router_topk_batch(bundle, 3; seed=1)
+    c = simulate_router_topk_batch(bundle, 3; seed=2)
+
+    @test a.topk_by_block == b.topk_by_block
+    @test a.entropy_by_block == b.entropy_by_block
+    @test a.confidence_by_block == b.confidence_by_block
+
+    # different seed must change at least some routing decisions
+    @test any(a.topk_by_block .!= c.topk_by_block)
+end
+
+@testset "RouterFrameCache: stable top-k for same seed; differs on new seed" begin
+    bundle = _minimal_bundle()
+    c1 = build_frame_cache(bundle; n_tokens=10, seed=42)
+    c2 = build_frame_cache(bundle; n_tokens=10, seed=42)
+    c3 = build_frame_cache(bundle; n_tokens=10, seed=43)
+    @test c1.topk == c2.topk
+    @test any(c1.topk .!= c3.topk)
+end
+
+@testset "simulate_router_topk_batch: does not mutate global RNG" begin
+    using Random
+    bundle = _minimal_bundle()
+    Random.seed!(987)
+    before = rand(UInt64)
+    Random.seed!(987)
+    simulate_router_topk_batch(bundle, 0; seed=1234)
+    after = rand(UInt64)
+    @test before == after
+end
+
+@testset "Public API exports: CUDA atmosphere additions" begin
+    for sym in (:update_activity_field!, :simulate_router_topk_batch,
+                :RouterFrameCache, :AtmosphereFrameBatch,
+                :build_frame_cache, :get_frame,
+                :topk_matrix_for_token, :activity_matrix_for_token)
+        @test isdefined(XAIDissectViz, sym)
+    end
+end
+
+@testset "launch_atmosphere remains defined but is not invoked in CI" begin
+    # We never invoke launch_atmosphere here — it requires GLMakie + a
+    # display / OpenGL context. CI just confirms the symbol is wired up.
+    @test isdefined(XAIDissectViz, :launch_atmosphere)
+    @test launch_atmosphere isa Function
+end
+
+@testset "Headless invariant after kernels/cache: GLMakie unloaded by default" begin
+    glmakie_id = Base.PkgId(Base.UUID("e9467ef8-e4e7-5192-8a1a-b1aee30e663a"), "GLMakie")
+    @test !haskey(Base.loaded_modules, glmakie_id)
+
+    # Exercise the new APIs from a freshly loaded package state.
+    bundle = _minimal_bundle()
+    cache = build_frame_cache(bundle; n_tokens=5, seed=1)
+    @test size(cache.topk) == (64, 2, 6)
+
+    A = zeros(Float32, 64, 8)
+    update_activity_field!(CPUBackend(), A, topk_matrix_for_token(cache, 0))
+    @test all(0f0 .<= A .<= 1f0)
+
+    @test !haskey(Base.loaded_modules, glmakie_id)
+end
