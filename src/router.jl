@@ -91,3 +91,79 @@ function update_expert_activity!(activity::Vector{Float32}, topk::Vector{Int}, :
     end
     return activity
 end
+
+# --- Lightweight batched router top-k for cache build ---
+#
+# `simulate_router_frame` returns the full logits/probs/activity payload for a
+# single (block, token). The atmosphere viewer needs only top-k + entropy +
+# confidence per (block, token) for the heatmap loop. This batched variant
+# computes those quantities for every block at a fixed token index in one shot,
+# without allocating per-block W matrices or producing the heavy fields.
+#
+# Determinism: seeded from `(seed, block, token_idx)` via a local Xoshiro RNG;
+# the global RNG is never touched. Synthetic logits are intentionally cheap
+# (sin/cos basis + per-(block,seed) bias) so cache builds stay fast even at
+# n_blocks=64, n_tokens=300.
+
+function simulate_router_topk_batch(bundle::XAIReportBundle, token_idx::Integer;
+                                    seed::Integer = 42,
+                                    backend::ComputeBackend = CPUBackend(),
+                                    top_k::Integer = 2)
+    haskey(bundle.metadata, "n_blocks")  || throw(ArgumentError("bundle.metadata missing \"n_blocks\""))
+    haskey(bundle.metadata, "n_experts") || throw(ArgumentError("bundle.metadata missing \"n_experts\""))
+    n_blocks = bundle.metadata["n_blocks"]::Int
+    n_experts = bundle.metadata["n_experts"]::Int
+    k = Int(top_k)
+    1 <= k <= n_experts ||
+        throw(ArgumentError("top_k=$k must satisfy 1 <= top_k <= n_experts ($n_experts)"))
+
+    topk = Matrix{Int32}(undef, n_blocks, k)
+    entropy = Vector{Float32}(undef, n_blocks)
+    confidence = Vector{Float32}(undef, n_blocks)
+    logits_buf = Vector{Float32}(undef, n_experts)
+
+    phase = 2π * (Int(token_idx) % 50) / 50
+    base_sin = Float32(sin(phase))
+    base_cos = Float32(cos(phase * 1.7))
+
+    for b in 1:n_blocks
+        rng = Xoshiro(hash((Int(seed), :batch, b, Int(token_idx))))
+        for e in 1:n_experts
+            ang = Float32(2π * ((b * 7 + e * 11) % 32) / 32)
+            logits_buf[e] = base_sin * Float32(cos(ang)) +
+                            base_cos * Float32(sin(ang)) +
+                            0.18f0 * randn(rng, Float32)
+        end
+        m = logits_buf[1]
+        @inbounds for e in 2:n_experts
+            v = logits_buf[e]
+            v > m && (m = v)
+        end
+        s = 0f0
+        @inbounds for e in 1:n_experts
+            logits_buf[e] = exp(logits_buf[e] - m)
+            s += logits_buf[e]
+        end
+        @inbounds for e in 1:n_experts
+            logits_buf[e] /= s
+        end
+
+        idx = partialsortperm(logits_buf, 1:k; rev=true)
+        @inbounds for j in 1:k
+            topk[b, j] = Int32(idx[j])
+        end
+
+        h = 0f0
+        @inbounds for e in 1:n_experts
+            p = logits_buf[e]
+            h -= p * log(max(p, 1f-12))
+        end
+        entropy[b] = Float32(h)
+        confidence[b] = Float32(logits_buf[idx[1]])
+    end
+
+    _ = backend  # backend is accepted for API symmetry; the batched math is CPU.
+    return (topk_by_block = topk,
+            entropy_by_block = entropy,
+            confidence_by_block = confidence)
+end
