@@ -1,4 +1,5 @@
 using Test
+using JSON3
 using XAIDissectViz
 
 # Minimal real-shaped bundle built by hand from struct constructors.
@@ -42,6 +43,16 @@ end
 @testset "load_report_bundle: strict errors" begin
     @test_throws ArgumentError load_report_bundle("")
     @test_throws ArgumentError load_report_bundle("/tmp/xai_dissect_does_not_exist_$(rand(UInt64))")
+end
+
+@testset "parse_inventory_metadata: JSON null uses semantic defaults" begin
+    j = JSON3.read(raw"""{"inferred":{"d_model":null,"n_experts":null,"n_blocks":null,"vocab_size":null,"d_ff":null}}""")
+    m = XAIDissectViz.parse_inventory_metadata(j)
+    @test m["d_model"] == 6144
+    @test m["n_experts"] == 8
+    @test m["n_blocks"] == 64
+    @test m["vocab_size"] == 0
+    @test m["d_ff"] == 0
 end
 
 @testset "_resolve_reports_dir: ambiguous run root" begin

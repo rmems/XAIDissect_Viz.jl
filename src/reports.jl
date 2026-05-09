@@ -52,6 +52,9 @@ function _resolve_reports_dir(path::AbstractString)::String
 end
 
 _as_int(x) = x === nothing ? 0 : Int(x)
+# JSON `null` is `nothing` in JSON3; `get(obj, key, default)` does NOT substitute when the key
+# exists with null. Use this for inventory `inferred.*` dims so null yields semantic defaults.
+_as_int_inferred(x, default::Int) = (x === nothing || x === missing) ? default : Int(x)
 _as_int_block(x) = x === nothing ? 0 : Int(x) + 1  # JSON is 0-based; Julia is 1-based
 _as_f32(x) = x === nothing ? 0f0 : Float32(x)
 _as_str(x) = x === nothing ? "" : String(x)
@@ -66,11 +69,15 @@ function parse_inventory_metadata(json)::Dict{String,Any}
         "schema_version" => _as_int(get(json, :schema_version, 0)),
     )
     if inferred !== nothing
-        metadata["d_model"]    = _as_int(get(inferred, :d_model, 6144))
-        metadata["n_experts"]  = _as_int(get(inferred, :n_experts, 8))
-        metadata["n_blocks"]   = _as_int(get(inferred, :n_blocks, 64))
-        metadata["vocab_size"] = _as_int(get(inferred, :vocab_size, 0))
-        metadata["d_ff"]       = _as_int(get(inferred, :d_ff, 0))
+        # Use get(..., nothing) so missing keys and JSON null both flow through
+        # `_as_int_inferred`, yielding semantic defaults (not 0 from `_as_int(nothing)`).
+        # JSON3: explicit `null` is `nothing`; `get(obj, key, default)` does not apply
+        # default when the key exists with null.
+        metadata["d_model"]    = _as_int_inferred(get(inferred, :d_model, nothing), 6144)
+        metadata["n_experts"]  = _as_int_inferred(get(inferred, :n_experts, nothing), 8)
+        metadata["n_blocks"]   = _as_int_inferred(get(inferred, :n_blocks, nothing), 64)
+        metadata["vocab_size"] = _as_int_inferred(get(inferred, :vocab_size, nothing), 0)
+        metadata["d_ff"]       = _as_int_inferred(get(inferred, :d_ff, nothing), 0)
     else
         metadata["d_model"]   = 6144
         metadata["n_experts"] = 8
