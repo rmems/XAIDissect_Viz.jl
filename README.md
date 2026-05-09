@@ -46,7 +46,7 @@ XAIDissectViz uses CUDA.jl for optional GPU acceleration of router simulation an
 - Strict real-JSON loader (`load_report_bundle`) parsing the 5 xai-dissect reports
 - Typed structs: `RouterRecord`, `ExpertRecord`, `TensorMetricRecord`, `SAAQReadinessRecord`, `XAIReportBundle`
 
-**Roadmap**: Create visual representation Grok 1 open weights, for eductional purposes.
+**Roadmap**: Create visual representations of xai-dissect Grok-1 report metadata for educational purposes.
 - Load full 'xai-dissect' json reports
 - Visualize router, blocks and experts
 - Render router risk and readiness heatmap
