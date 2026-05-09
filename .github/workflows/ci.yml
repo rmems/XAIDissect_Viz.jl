@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Julia CPU tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Julia
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.12'
+
+      - name: Cache Julia artifacts
+        uses: julia-actions/cache@v2
+
+      - name: Install Xvfb/OpenGL deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1 mesa-utils
+
+      - name: Instantiate
+        run: |
+          xvfb-run -a julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
+
+      - name: Headless smoke load (no display required)
+        run: julia --project=. -e 'using XAIDissectViz; println("XAIDissectViz loaded headlessly")'
+
+      - name: Run tests
+        run: julia --project=. -e 'using Test; include("test/runtests.jl")'

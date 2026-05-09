@@ -1,2 +1,141 @@
-*.log
+# ======================
+# Secrets / environment
+# ======================
 *.env
+.env
+.env.*
+!.env.example
+
+# ======================
+# Logs / runtime junk
+*.log
+logs/
+tmp/
+temp/
+.cache/
+.cache*/
+.DS_Store
+Thumbs.db
+
+# ======================
+# Julia
+# ======================
+Manifest.toml
+*.cov
+*.mem
+.julia/
+.juliaup/
+deps/deps.jl
+build/
+coverage/ 
+test/coverage/ 
+docs/build/
+
+# Keep practice source files
+!Project.toml
+!src/
+!test/
+!examples/
+!docs/
+
+# =============================
+# xai-dissect raw outputs
+# Do Not commit full local runs
+# =============================
+out/
+outputs/
+runs/
+xai-dissect/out/
+grok1_run*/
+*_run*/
+RUN_PROVENANCE.txt
+checkpoint_files.tsv
+
+exports/
+manifests/
+reports/
+
+# Nested xai-dissect report directories
+**/exports/
+**/manifests/
+**/reports/
+**/RUN_PROVENANCE.txt
+**/checkpoint_files.tsv
+
+# ===========================
+# xai-dissect JSON exports
+# Full reports may reveal local paths,
+# checkpoints names, run metadata, or be huge.
+# Commit only small redacted samples.
+# ===========================================
+*.findings.json
+*-findings.json
+experts.json
+inventory.json
+routing-report.json
+saaq-readiness.json
+stats.json
+candidate-saaq-targets.json
+checkpoint-inventory-snapshot.json
+routing-critical-tensor.json
+
+# Allow curated samples fixtures
+!data/
+!data/saaq-reports/
+!data/sample_reports/**/*.json
+!data/sample_reports/**/*.md
+!data/sample_reports/.gitkeep
+
+# =========================
+# Model weights / checkpoints
+# Never commit weights
+# =========================
+*.gguf
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.npz
+*.npy
+*.arrow
+*.parquet
+*.jld2
+*.h5
+*.hdf5
+*.msgpack
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+*.7z
+*.zst
+
+checkpoints/
+models/
+weights/
+grok-1-official/
+ckpt-*/
+shard*/
+*.index.json
+
+# =========================
+# CUDA / GPU generated artifacts
+# =========================
+*.cubin
+*.ptx
+*.fatbin
+*.sass
+*.nvvp
+*.nsys-rep
+*.qdrep
+
+# =========================
+# IDE / editor
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*.codex
