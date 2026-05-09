@@ -3,7 +3,9 @@ using Random
 const _W_CACHE = Dict{Tuple{Int,Int,Int,Int}, Matrix{Float32}}()
 
 function router_logits(::CPUBackend, h::AbstractVector, W::AbstractMatrix)
-    return vec(transpose(h) * W)
+    h32 = Float32.(h)
+    W32 = Float32.(W)
+    return vec(transpose(h32) * W32)
 end
 
 function router_logits(::CUDABackend, h::AbstractVector, W::AbstractMatrix)

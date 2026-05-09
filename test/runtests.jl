@@ -31,6 +31,14 @@ end
     @test topk_experts(probs, 1)[1] in 1:2
 end
 
+@testset "Router logits CPU: Float64 input gives Float32 logits" begin
+    h = ones(Float64, 4)
+    W = ones(Float64, 4, 2)
+    logits = router_logits(CPUBackend(), h, W)
+    @test eltype(logits) === Float32
+    @test length(logits) == 2
+end
+
 @testset "load_report_bundle: strict errors" begin
     @test_throws ArgumentError load_report_bundle("")
     @test_throws ArgumentError load_report_bundle("/tmp/xai_dissect_does_not_exist_$(rand(UInt64))")
