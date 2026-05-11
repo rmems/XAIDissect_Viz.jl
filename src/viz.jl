@@ -259,7 +259,7 @@ function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = C
     Label(inspector[1, 1], "Inspector", fontsize = 18, font = :bold)
     Label(inspector[2, 1], lift(b -> "Block: $b", selected_block))
     Label(inspector[3, 1], lift(f -> "Top-2 Experts: $(f.topk)", current_frame))
-    Label(inspector[4, 1], lift(f -> "Logits (first 4): $(round.(f.logits[1:4]; digits=3)) …", current_frame))
+    Label(inspector[4, 1], lift(f -> "Logits (first 4): $(round.(f.logits[1:min(4, length(f.logits))]; digits=3)) …", current_frame))
     Label(inspector[5, 1], lift(f -> "Probs: $(round.(f.probs; digits=3))", current_frame))
     Label(inspector[6, 1], lift(f -> "Entropy: $(round(f.entropy; digits=4))", current_frame))
     Label(inspector[7, 1], lift(selected_block) do b

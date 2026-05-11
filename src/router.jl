@@ -1,6 +1,7 @@
 using Random
 
 const _W_CACHE = Dict{Tuple{Int,Int,Int,Int}, Matrix{Float32}}()
+const _W_CACHE_MAX_ENTRIES = 256
 
 @inline function _mix_u64(x::UInt64)::UInt64
     x ⊻= x >> 30
@@ -28,8 +29,8 @@ const _ROUTER_SEED_TAG_BATCH = 0x082efa98ec4e6c89 % UInt64
 end
 
 function router_logits(::CPUBackend, h::AbstractVector, W::AbstractMatrix)
-    h32 = Float32.(h)
-    W32 = Float32.(W)
+    h32 = h isa AbstractVector{Float32} ? h : Float32.(h)
+    W32 = W isa AbstractMatrix{Float32} ? W : Float32.(W)
     return vec(transpose(h32) * W32)
 end
 
@@ -63,6 +64,9 @@ function simulate_router_frame(bundle::XAIReportBundle, block::Int, token_idx::I
     n_experts = bundle.metadata["n_experts"]::Int
 
     key = (Int(seed), block, d_model, n_experts)
+    if !haskey(_W_CACHE, key) && length(_W_CACHE) >= _W_CACHE_MAX_ENTRIES
+        empty!(_W_CACHE)  # hard cap: never retain unbounded per-seed weights
+    end
     W = get!(_W_CACHE, key) do
         rng_W = Xoshiro(deterministic_xoshiro_seed(seed, _ROUTER_SEED_TAG_W,
                                                    block, d_model, n_experts))
@@ -76,7 +80,9 @@ function simulate_router_frame(bundle::XAIReportBundle, block::Int, token_idx::I
 
     logits = router_logits(backend, h, W)
     probs = router_probs(logits)
-    topk = topk_experts(probs, 2)
+    top_k_cfg = get(bundle.metadata, "top_k", 2)::Int
+    k = clamp(top_k_cfg, 1, length(probs))
+    topk = topk_experts(probs, k)
 
     entropy = -sum(@. probs * log(max(probs, 1f-12)))
 
