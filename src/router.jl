@@ -20,7 +20,7 @@ const _ROUTER_SEED_TAG_BATCH = 0x082efa98ec4e6c89 % UInt64
 @inline function deterministic_xoshiro_seed(seed::Integer, tag::UInt64,
                                             a::Integer, b::Integer=0,
                                             c::Integer=0, d::Integer=0)::UInt64
-    x = UInt64(seed) ⊻ tag
+    x = reinterpret(UInt64, Int64(seed)) ⊻ tag
     x ⊻= UInt64(a) * 0x9e3779b97f4a7c15
     x ⊻= UInt64(b) * 0xbf58476d1ce4e5b9
     x ⊻= UInt64(c) * 0x94d049bb133111eb
