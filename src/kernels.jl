@@ -119,12 +119,13 @@ function update_activity_field!(::CUDABackend,
     _ensure_cuda_kernels!()
     CUDA_mod = Base.invokelatest(getfield, XAIDissectViz, :CUDA)
     CuMat = CUDA_mod.CuArray
+    CuStridedMat = CUDA_mod.StridedCuArray
     if !CUDA_mod.functional()
         @warn "CUDABackend requested but CUDA.functional()==false; using CPUBackend for this update"
         return update_activity_field!(CPUBackend(), activity, topk_by_block; decay = decay, boost = boost)
     end
-    if !(activity isa CuMat) || !(topk_by_block isa CuMat)
-        throw(ArgumentError("CUDABackend requires GPU CuArray activity and topk buffers (got $(typeof(activity)), $(typeof(topk_by_block)))"))
+    if !(activity isa CuMat) || !(topk_by_block isa CuStridedMat)
+        throw(ArgumentError("CUDABackend requires GPU CuArray activity and CuArray-compatible topk buffers (got $(typeof(activity)), $(typeof(topk_by_block)))"))
     end
     # Resolve the lazily-defined kernel via getfield + invokelatest so we don't
     # trip Julia 1.12's stricter world-age semantics.
