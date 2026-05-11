@@ -98,11 +98,15 @@ function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = C
     # include a leading "unassigned" entry or omit blocks entirely.
     saaq_by_block = Dict{Int, SAAQReadinessRecord}(s.block => s for s in bundle.saaq)
 
-    # Seed initial activity row from the first frame so the inspector and the
-    # heatmap row for block 1 agree before the first play tick.
     on(current_frame) do frame
-        activity[][frame.block, :] .= frame.expert_activity
-        activity[] = activity[]  # notify
+        # In fallback (no-cache) mode, the heatmap encodes the selected block's
+        # per-token activity row from `simulate_router_frame`. When the cache is
+        # active, the heatmap is driven by `update_activity_field!` and should
+        # not be overwritten by the inspector frame.
+        if cache === nothing
+            activity[][frame.block, :] .= frame.expert_activity
+            activity[] = activity[]  # notify
+        end
     end
 
     # --- Per-tick activity field update ---------------------------------------
@@ -292,8 +296,10 @@ function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = C
     token_slider = Slider(timeline[1, 1],
         range = 0:(cache === nothing ? 300 : cache.n_tokens - 1),
         startvalue = 0, width = 600)
+    suppress_slider_cb = Ref(false)
     on(token_slider.value) do v
         token_idx[] = v
+        suppress_slider_cb[] && return
         # Inspector uses the heavy per-(block,token) simulate_router_frame
         # so logits/probs reflect the SELECTED block — the cache only stores
         # top-k/entropy/confidence per block.
@@ -320,7 +326,12 @@ function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = C
                         nxt = token_idx[] + 1
                         if nxt > max_t; nxt = 0; end
                         token_idx[] = nxt
-                        token_slider.value[] = nxt
+                        suppress_slider_cb[] = true
+                        try
+                            token_slider.value[] = nxt
+                        finally
+                            suppress_slider_cb[] = false
+                        end
                         # Update the heatmap activity field directly from the
                         # cache; only update the inspector frame when needed
                         # (it's the more expensive call).

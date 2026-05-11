@@ -2,6 +2,31 @@ using Random
 
 const _W_CACHE = Dict{Tuple{Int,Int,Int,Int}, Matrix{Float32}}()
 
+@inline function _mix_u64(x::UInt64)::UInt64
+    x ⊻= x >> 30
+    x *= 0xbf58476d1ce4e5b9
+    x ⊻= x >> 27
+    x *= 0x94d049bb133111eb
+    x ⊻= x >> 31
+    return x
+end
+
+const _ROUTER_SEED_TAG_W     = 0x243f6a8885a308d3 % UInt64
+const _ROUTER_SEED_TAG_H     = 0x13198a2e03707344 % UInt64
+const _ROUTER_SEED_TAG_A     = 0xa4093822299f31d0 % UInt64
+const _ROUTER_SEED_TAG_BATCH = 0x082efa98ec4e6c89 % UInt64
+
+@inline function deterministic_xoshiro_seed(seed::Integer, tag::UInt64,
+                                            a::Integer, b::Integer=0,
+                                            c::Integer=0, d::Integer=0)::UInt64
+    x = UInt64(seed) ⊻ tag
+    x ⊻= UInt64(a) * 0x9e3779b97f4a7c15
+    x ⊻= UInt64(b) * 0xbf58476d1ce4e5b9
+    x ⊻= UInt64(c) * 0x94d049bb133111eb
+    x ⊻= UInt64(d) * 0xd6e8feb86659fd93
+    return _mix_u64(x)
+end
+
 function router_logits(::CPUBackend, h::AbstractVector, W::AbstractMatrix)
     h32 = Float32.(h)
     W32 = Float32.(W)
@@ -39,11 +64,13 @@ function simulate_router_frame(bundle::XAIReportBundle, block::Int, token_idx::I
 
     key = (Int(seed), block, d_model, n_experts)
     W = get!(_W_CACHE, key) do
-        rng_W = Xoshiro(hash((seed, "W", block, d_model, n_experts)))
+        rng_W = Xoshiro(deterministic_xoshiro_seed(seed, _ROUTER_SEED_TAG_W,
+                                                   block, d_model, n_experts))
         randn(rng_W, Float32, d_model, n_experts) .* 0.018f0
     end
 
-    rng_h = Xoshiro(hash((seed, "h", block, token_idx)))
+    rng_h = Xoshiro(deterministic_xoshiro_seed(seed, _ROUTER_SEED_TAG_H,
+                                               block, token_idx))
     phase = 2π * (token_idx % 50) / 50
     h = randn(rng_h, Float32, d_model) .* 0.08f0 .+ sin(phase) * 0.25f0 .+ cos(phase*1.7) * 0.12f0
 
@@ -53,7 +80,8 @@ function simulate_router_frame(bundle::XAIReportBundle, block::Int, token_idx::I
 
     entropy = -sum(@. probs * log(max(probs, 1f-12)))
 
-    rng_a = Xoshiro(hash((seed, "a", block, token_idx)))
+    rng_a = Xoshiro(deterministic_xoshiro_seed(seed, _ROUTER_SEED_TAG_A,
+                                               block, token_idx))
     activity = fill(0.08f0, n_experts)
     activity[topk] .+= 0.65f0
     activity .+= 0.03f0 .* rand(rng_a, Float32, n_experts)
@@ -127,7 +155,8 @@ function simulate_router_topk_batch(bundle::XAIReportBundle, token_idx::Integer;
     base_cos = Float32(cos(phase * 1.7))
 
     for b in 1:n_blocks
-        rng = Xoshiro(hash((Int(seed), :batch, b, Int(token_idx))))
+        rng = Xoshiro(deterministic_xoshiro_seed(seed, _ROUTER_SEED_TAG_BATCH,
+                                                 b, Int(token_idx)))
         for e in 1:n_experts
             ang = Float32(2π * ((b * 7 + e * 11) % 32) / 32)
             logits_buf[e] = base_sin * Float32(cos(ang)) +
