@@ -17,6 +17,21 @@
 # (load_report_bundle, simulate_router_frame, router_logits, router_probs,
 # topk_experts) stays callable without a UI stack.
 
+const _ATMOSPHERE_CUDA_OK = Ref{Union{Nothing,Bool}}(nothing)
+
+function _atmosphere_cuda_functional!()::Bool
+    v = _ATMOSPHERE_CUDA_OK[]
+    v !== nothing && return v::Bool
+    ok = try
+        @eval XAIDissectViz using CUDA
+        @eval XAIDissectViz CUDA.functional()
+    catch
+        false
+    end
+    _ATMOSPHERE_CUDA_OK[] = ok
+    return ok
+end
+
 # Public, lazy-loading entry point. Loads GLMakie & friends on first call and
 # raises a clear error if they (or the underlying display/OpenGL context) are
 # unavailable. The actual implementation lives in `_launch_atmosphere`.
@@ -32,26 +47,143 @@ function launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = CP
 end
 
 function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = CPUBackend())
-    n_blocks = get(bundle.metadata, "n_blocks", 64)
-    n_experts = get(bundle.metadata, "n_experts", 8)
+    n_blocks = get(bundle.metadata, "n_blocks", 64)::Int
+    n_experts = get(bundle.metadata, "n_experts", 8)::Int
+    n_tokens_default = 300
+    cache_seed = 42
+
+    # --- Frame cache (built once at launch) ---
+    # On failure we fall back to the older per-tick `simulate_router_frame`
+    # path so the viewer still works on bundles with unusual metadata.
+    local cache::Union{Nothing,RouterFrameCache}
+    try
+        cache = build_frame_cache(bundle; backend=CPUBackend(),
+                                  n_tokens=n_tokens_default, seed=cache_seed)
+    catch err
+        @warn "build_frame_cache failed; falling back to direct simulate_router_frame path" error=err
+        cache = nothing
+    end
+
+    cuda_avail = backend isa CUDABackend ? _atmosphere_cuda_functional!() : false
 
     # --- State ---
     selected_block = Observable(1)
     token_idx = Observable(0)
     activity = Observable(zeros(Float32, n_blocks, n_experts))
     is_playing = Observable(false)
-    seed = Observable(42)
+    seed = Observable(cache_seed)
     play_task = Ref{Union{Nothing,Task}}(nothing)
     current_frame = Observable(simulate_router_frame(bundle, 1, 0; backend=backend, seed=seed[]))
+
+    # FPS tracking — exponential moving average over recent play ticks.
+    fps_obs = Observable(0.0)
+    last_tick_time = Ref(time())
+
+    # Track the cached heatmap token so direct slider seeks / wraparound can
+    # rebuild absolute state instead of applying one incremental step to the
+    # current matrix.
+    last_activity_token = Ref(-1)
+
+    # Reusable CPU top-k buffer (the heatmap update consumes one per tick).
+    topk_buf = cache === nothing ? Matrix{Int32}(undef, 0, 0) :
+                                    Matrix{Int32}(undef, n_blocks, cache.top_k)
+
+    # Optional CUDA buffers for the per-tick activity update. Allocated only
+    # when the user picked CUDABackend AND CUDA is actually functional, so the
+    # default CPU path on headless / no-GPU hosts pays nothing extra.
+    cuda_act = Ref{Any}(nothing)
+    cuda_tk  = Ref{Any}(nothing)
+    use_cuda_activity = Ref(false)
+    if backend isa CUDABackend && cache !== nothing && cuda_avail
+        try
+            CuArray_T = Base.invokelatest(getfield, XAIDissectViz, :CuArray)
+            cuda_act[] = Base.invokelatest(CuArray_T, zeros(Float32, n_blocks, n_experts))
+            cuda_tk[]  = Base.invokelatest(CuArray_T, zeros(Int32, n_blocks, cache.top_k))
+            use_cuda_activity[] = true
+        catch err
+            @warn "CUDA activity buffer init failed; per-tick activity will run on CPU" error=err
+        end
+    end
 
     # SAAQ rows are keyed by block id, not vector position. Some reports
     # include a leading "unassigned" entry or omit blocks entirely.
     saaq_by_block = Dict{Int, SAAQReadinessRecord}(s.block => s for s in bundle.saaq)
 
-    # Seed initial activity from first frame
+    # Seed initial activity row from the first frame only in fallback mode;
+    # when a frame cache exists, `simulate_router_frame` expert_activity applies
+    # a different model than `update_activity_field!` and would corrupt rows.
     on(current_frame) do frame
+        cache === nothing || return
         activity[][frame.block, :] .= frame.expert_activity
         activity[] = activity[]  # notify
+    end
+
+    # --- Per-tick activity field update ---------------------------------------
+    # Pulls top-k from the cache (or recomputes via simulate_router_frame in the
+    # fallback path), then evolves the n_blocks × n_experts activity field via
+    # `update_activity_field!`. Reuses preallocated buffers to avoid per-tick
+    # allocation in the play loop.
+    function _fill_topk_buf!(t::Int)
+        cache === nothing && return topk_buf
+        _validate_token_idx(cache, t)
+        slot = t + 1
+        @inbounds for j in 1:cache.top_k, b in 1:n_blocks
+            topk_buf[b, j] = cache.topk[b, j, slot]
+        end
+        return topk_buf
+    end
+
+    function _rebuild_activity!(t::Int)
+        cache === nothing && return nothing
+        activity[] .= activity_matrix_for_token(cache, t; backend=CPUBackend())
+        if use_cuda_activity[]
+            try
+                Base.invokelatest(copyto!, cuda_act[], activity[])
+            catch err
+                @warn "CUDA activity state sync failed after rebuild; switching to CPU activity for this session" error=err
+                use_cuda_activity[] = false
+            end
+        end
+        activity[] = activity[]
+        last_activity_token[] = t
+        return nothing
+    end
+
+    function _step_activity!(t::Int)
+        if cache === nothing
+            # Fallback: only update the selected block row from the heavy frame.
+            frame = simulate_router_frame(bundle, selected_block[], t;
+                                          backend=backend, seed=seed[])
+            activity[][selected_block[], :] .= frame.expert_activity
+            activity[] = activity[]
+            last_activity_token[] = t
+            return
+        end
+
+        # In cache-backed mode, the heatmap state at token t is absolute. Only
+        # strictly monotonic +1 playback steps can safely use one incremental
+        # update; direct seeks and wraparound must rebuild from the cached prefix.
+        if t != last_activity_token[] + 1
+            _rebuild_activity!(t)
+            return
+        end
+
+        _fill_topk_buf!(t)
+        if use_cuda_activity[]
+            try
+                Base.invokelatest(copyto!, cuda_tk[], topk_buf)
+                update_activity_field!(backend, cuda_act[], cuda_tk[])
+                Base.invokelatest(copyto!, activity[], cuda_act[])
+            catch err
+                @warn "CUDA activity tick failed; switching to CPU activity for this session" error=err
+                use_cuda_activity[] = false
+                update_activity_field!(CPUBackend(), activity[], topk_buf)
+            end
+        else
+            update_activity_field!(CPUBackend(), activity[], topk_buf)
+        end
+        activity[] = activity[]
+        last_activity_token[] = t
     end
 
     # --- Figure & Layout ---
@@ -178,13 +310,43 @@ function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = C
     Label(inspector[8, 1], "Provenance: $(bundle.provenance) — simulated router dynamics on real metadata")
     Label(inspector[9, 1], "Click heatmap row or use slider to change block", fontsize = 10, color = :gray)
 
+    # Performance / runtime label — updated every play tick. Keeps the user
+    # honest about which backend is doing the activity-field work.
+    perf_label = Label(inspector[10, 1],
+        lift(token_idx, selected_block, fps_obs) do t, b, f
+            backend_name = backend isa CUDABackend ? "CUDABackend" : "CPUBackend"
+            cuda_str = backend isa CUDABackend ? (cuda_avail ? "true" : "false") : "n/a (CPUBackend — CUDA not loaded)"
+            cache_str = cache === nothing ? "off (fallback)" :
+                "$(cache.n_blocks)×$(cache.n_tokens + 1)×$(cache.top_k)"
+            act_path = use_cuda_activity[] ? "CUDA kernels" : "CPU kernels"
+            interval_ms = f > 0 ? round(1000.0 / f; digits=1) : 0.0
+            string("Backend: ", backend_name, " | CUDA.functional()=", cuda_str,
+                   "\nActivity path: ", act_path,
+                   " | Frame cache: ", cache_str,
+                   "\nToken: ", t, "  Block: ", b,
+                   "  FPS: ", round(f; digits=1), " (", interval_ms, " ms/tick)")
+        end,
+        fontsize = 11, halign = :left)
+
     # D. Timeline Controls (bottom)
     timeline = grid[3, 1:4] = GridLayout()
-    token_slider = Slider(timeline[1, 1], range = 0:300, startvalue = 0, width = 600)
+    token_slider = Slider(timeline[1, 1],
+        range = 0:(cache === nothing ? 300 : cache.n_tokens),
+        startvalue = 0, width = 600)
+    suppress_slider_cb = Ref(false)
     on(token_slider.value) do v
+        suppress_slider_cb[] && return
         token_idx[] = v
+        # Inspector uses the heavy per-(block,token) simulate_router_frame
+        # so logits/probs reflect the SELECTED block — the cache only stores
+        # top-k/entropy/confidence per block.
         new_frame = simulate_router_frame(bundle, selected_block[], v; backend=backend, seed=seed[])
         current_frame[] = new_frame
+        # Heatmap reflects the cached activity field at this token (or the
+        # selected-block fallback if cache is off).
+        if cache !== nothing
+            _step_activity!(v)
+        end
     end
 
     play_btn = Button(timeline[1, 2], label = lift(p -> p ? "⏸ Pause" : "▶ Play", is_playing))
@@ -194,12 +356,48 @@ function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = C
             if play_task[] !== nothing && !istaskdone(play_task[])
                 schedule(play_task[], InterruptException(); error=true)
             end
+            last_tick_time[] = time()
             play_task[] = @async begin
                 try
+                    max_t = cache === nothing ? 300 : cache.n_tokens
                     while is_playing[]
-                        token_idx[] += 1
-                        if token_idx[] > 300; token_idx[] = 0; end
-                        token_slider.value[] = token_idx[]
+                        # Step the timeline.
+                        nxt = token_idx[] + 1
+                        if nxt > max_t; nxt = 0; end
+                        token_idx[] = nxt
+                        suppress_slider_cb[] = true
+                        try
+                            token_slider.value[] = nxt
+                        finally
+                            suppress_slider_cb[] = false
+                        end
+                        # In fallback mode, every fifth tick updates both the
+                        # inspector and selected activity row from one frame.
+                        if cache === nothing && nxt % 5 == 0
+                            current_frame[] = simulate_router_frame(bundle, selected_block[], nxt;
+                                                                    backend=backend, seed=seed[])
+                            last_activity_token[] = nxt
+                        else
+                            # Update the heatmap activity field directly from
+                            # the cache; only update the inspector frame when
+                            # needed (it's the more expensive call).
+                            _step_activity!(nxt)
+                            # Refresh selected-block logits/probs less often
+                            # than the heatmap (every ~5 ticks) to keep the
+                            # loop fast.
+                            if nxt % 5 == 0
+                                current_frame[] = simulate_router_frame(bundle, selected_block[], nxt;
+                                                                        backend=backend, seed=seed[])
+                            end
+                        end
+                        # FPS estimate (exponential moving average).
+                        now = time()
+                        dt = now - last_tick_time[]
+                        last_tick_time[] = now
+                        if dt > 0
+                            inst = 1.0 / dt
+                            fps_obs[] = fps_obs[] == 0 ? inst : 0.6 * fps_obs[] + 0.4 * inst
+                        end
                         sleep(0.08)
                     end
                 catch e
@@ -216,14 +414,18 @@ function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = C
         catch
         end
     end
-    # Re-simulate the current (block, token) when the user changes the seed
+    # Re-simulate the inspector frame when the seed changes. The cache itself
+    # is keyed off `cache_seed` (set at launch) and is intentionally not
+    # rebuilt on every UI seed change to keep things responsive — the cache
+    # is for the heatmap atmosphere; the inspector reflects the live UI seed.
     on(seed) do _
         current_frame[] = simulate_router_frame(bundle, selected_block[], token_idx[];
                                                 backend=backend, seed=seed[])
     end
 
-    # Initial frame
+    # Initial frame + activity field at t=0.
     current_frame[] = simulate_router_frame(bundle, selected_block[], token_idx[]; backend=backend, seed=seed[])
+    _step_activity!(token_idx[])
     refresh_graph!(current_frame[])
 
     # Final layout tweaks
