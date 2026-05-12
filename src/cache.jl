@@ -22,22 +22,6 @@
 # for the single selected (block, token) on demand.
 
 """
-    AtmosphereFrameBatch
-
-Lightweight per-token router state cached for the atmosphere viewer.
-- `token_idx`            — token index this batch corresponds to
-- `topk_by_block`        — `n_blocks × top_k` `Int32` matrix of selected experts
-- `entropy_by_block`     — `Vector{Float32}` of length `n_blocks`
-- `confidence_by_block`  — `Vector{Float32}` of length `n_blocks` (top-1 prob)
-"""
-struct AtmosphereFrameBatch
-    token_idx::Int
-    topk_by_block::Matrix{Int32}
-    entropy_by_block::Vector{Float32}
-    confidence_by_block::Vector{Float32}
-end
-
-"""
     RouterFrameCache
 
 Holds the precomputed batched router state for an entire timeline plus the

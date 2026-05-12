@@ -54,7 +54,6 @@ The atmosphere viewer animates a synthetic `n_blocks × n_experts` activity fiel
 update_activity_field!         # CPU + CUDA dispatch wrapper
 simulate_router_topk_batch     # cheap batched top-k/entropy/confidence
 RouterFrameCache               # precomputed timeline cache
-AtmosphereFrameBatch           # per-token cached state
 build_frame_cache              # fill a cache for n_tokens
 get_frame                      # (block, token) -> cached state
 topk_matrix_for_token          # n_blocks × top_k Int32 matrix

@@ -376,6 +376,7 @@ function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = C
                             _step_activity!(nxt)
                         end
                         token_idx[] = nxt
+                        prev_token[] = nxt
                         suppress_slider_cb[] = true
                         try
                             token_slider.value[] = nxt

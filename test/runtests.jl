@@ -364,7 +364,7 @@ end
 
 @testset "Public API exports: CUDA atmosphere additions" begin
     for sym in (:update_activity_field!, :simulate_router_topk_batch,
-                :RouterFrameCache, :AtmosphereFrameBatch,
+                :RouterFrameCache,
                 :build_frame_cache, :get_frame,
                 :topk_matrix_for_token, :activity_matrix_for_token)
         @test isdefined(XAIDissectViz, sym)
