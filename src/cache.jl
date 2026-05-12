@@ -28,7 +28,10 @@ Holds the precomputed batched router state for an entire timeline plus the
 metadata needed to reconstruct the activity field deterministically.
 
 Fields:
-- `n_blocks`, `n_experts`, `n_tokens`, `top_k`
+- `n_blocks`, `n_experts`, `top_k`
+- `n_tokens`            — number of timeline slots (token indices `0` through `n_tokens-1`);
+                           equals `n_tokens_arg + 1` where `n_tokens_arg` is the value passed
+                           to [`build_frame_cache`](@ref)
 - `seed`                — RNG seed used to populate the cache
 - `topk`                — `n_blocks × top_k × n_tokens` `Array{Int32,3}` (flat view)
 - `entropy`             — `n_blocks × n_tokens` `Matrix{Float32}`
@@ -98,7 +101,7 @@ function build_frame_cache(bundle::XAIReportBundle;
         end
     end
 
-    return RouterFrameCache(n_blocks, n_experts, Int(n_tokens) + 1, k, Int(seed),
+    return RouterFrameCache(n_blocks, n_experts, Int(n_tokens) + 1, k, seed % Int,
                             topk, entropy, confidence)
 end
 

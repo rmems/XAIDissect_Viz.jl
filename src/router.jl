@@ -67,7 +67,7 @@ function simulate_router_frame(bundle::XAIReportBundle, block::Int, token_idx::I
     d_model = bundle.metadata["d_model"]::Int
     n_experts = bundle.metadata["n_experts"]::Int
 
-    key = (Int(seed), block, d_model, n_experts)
+    key = (seed % Int, block, d_model, n_experts)
     if !haskey(_W_CACHE, key) && length(_W_CACHE) >= _W_CACHE_MAX_ENTRIES
         empty!(_W_CACHE)  # hard cap: never retain unbounded per-seed weights
     end

@@ -340,7 +340,8 @@ function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = C
         token_idx[] = v
         new_frame = simulate_router_frame(bundle, selected_block[], v; backend=backend, seed=seed[])
         current_frame[] = new_frame
-        if cache !== nothing && v < prev_token[]
+        delta = v - prev_token[]
+        if cache !== nothing && (delta < 0 || delta > 1)
             _reconstruct_activity!(v)
         elseif cache !== nothing && v > prev_token[]
             for s in (prev_token[] + 1):v

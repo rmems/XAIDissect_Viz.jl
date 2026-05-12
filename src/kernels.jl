@@ -120,7 +120,8 @@ function update_activity_field!(::CUDABackend,
                                 boost::Float32 = 0.55f0)
     _ensure_cuda_kernels!()
     CuArray_T = Base.invokelatest(getfield, XAIDissectViz, :CuArray)
-    is_gpu = Base.invokelatest(isa, activity, CuArray_T)
+    is_gpu = Base.invokelatest(isa, activity, CuArray_T) ||
+             (activity isa SubArray && Base.invokelatest(isa, parent(activity), CuArray_T))
     if !is_gpu
         cuda_ok = try; Base.invokelatest(getfield, XAIDissectViz, :CUDA) |>
                        m -> Base.invokelatest(getfield, m, :functional) |>
