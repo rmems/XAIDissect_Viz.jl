@@ -342,6 +342,10 @@ function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = C
         current_frame[] = new_frame
         if cache !== nothing && v < prev_token[]
             _reconstruct_activity!(v)
+        elseif cache !== nothing && v > prev_token[]
+            for s in (prev_token[] + 1):v
+                _step_activity!(s)
+            end
         else
             _step_activity!(v)
         end
