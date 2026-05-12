@@ -209,7 +209,7 @@ end
 # CI never enters the CUDA branches; the CPU-side assertions still run.
 function _cuda_functional()
     try
-        @eval using CUDA
+        @eval import CUDA
         return @eval CUDA.functional()
     catch
         return false
@@ -328,6 +328,27 @@ end
     c3 = build_frame_cache(bundle; n_tokens=10, seed=43)
     @test c1.topk == c2.topk
     @test any(c1.topk .!= c3.topk)
+end
+
+@testset "simulate_router_frame: negative seed does not crash" begin
+    bundle = _minimal_bundle()
+    frame = simulate_router_frame(bundle, 1, 0; seed=-42)
+    @test length(frame.probs) == 8
+    frame2 = simulate_router_frame(bundle, 1, 0; seed=-42)
+    @test frame.logits == frame2.logits
+end
+
+@testset "simulate_router_topk_batch: negative seed does not crash" begin
+    bundle = _minimal_bundle()
+    r = simulate_router_topk_batch(bundle, 0; seed=-7)
+    @test size(r.topk_by_block) == (64, 2)
+end
+
+@testset "build_frame_cache: missing metadata keys throw ArgumentError" begin
+    bad_meta = Dict{String,Any}("d_model" => 6144)
+    bad_bundle = XAIReportBundle(bad_meta, RouterRecord[], ExpertRecord[],
+                                 TensorMetricRecord[], SAAQReadinessRecord[], "real")
+    @test_throws ArgumentError build_frame_cache(bad_bundle; n_tokens=1)
 end
 
 @testset "simulate_router_topk_batch: does not mutate global RNG" begin

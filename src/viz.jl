@@ -31,6 +31,20 @@ function launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = CP
     return Base.invokelatest(_launch_atmosphere, bundle; backend=backend)
 end
 
+const _ATMOSPHERE_CUDA_OK = Ref{Union{Nothing,Bool}}(nothing)
+
+function _atmosphere_cuda_functional!()::Bool
+    _ATMOSPHERE_CUDA_OK[] !== nothing && return _ATMOSPHERE_CUDA_OK[]::Bool
+    ok = try
+        @eval XAIDissectViz using CUDA
+        @eval XAIDissectViz CUDA.functional()
+    catch
+        false
+    end
+    _ATMOSPHERE_CUDA_OK[] = ok
+    return ok
+end
+
 function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = CPUBackend())
     n_blocks = get(bundle.metadata, "n_blocks", 64)::Int
     n_experts = get(bundle.metadata, "n_experts", 8)::Int
@@ -49,14 +63,13 @@ function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = C
         cache = nothing
     end
 
-    cuda_avail = try
-        # Probe via a fresh `using` so we never crash when CUDA is absent.
-        # `@eval` runs at module top-level (latest world), so `CUDA.functional`
-        # is resolved against the just-loaded CUDA module rather than against
-        # whatever bindings were visible when this function was compiled.
-        @eval XAIDissectViz using CUDA
-        @eval XAIDissectViz CUDA.functional()
-    catch
+    cuda_avail = if backend isa CUDABackend
+        try
+            _atmosphere_cuda_functional!()
+        catch
+            false
+        end
+    else
         false
     end
 
@@ -145,6 +158,29 @@ function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = C
             end
         else
             update_activity_field!(CPUBackend(), activity[], topk_buf)
+        end
+        activity[] = activity[]
+    end
+
+    function _reconstruct_activity!(t::Int)
+        cache === nothing && return _step_activity!(t)
+        activity[] .= 0f0
+        for s in 0:t
+            _fill_topk_buf!(s)
+            if use_cuda_activity[]
+                try
+                    Base.invokelatest(copyto!, cuda_act[], activity[])
+                    Base.invokelatest(copyto!, cuda_tk[], topk_buf)
+                    update_activity_field!(backend, cuda_act[], cuda_tk[])
+                    Base.invokelatest(copyto!, activity[], cuda_act[])
+                catch err
+                    @warn "CUDA reconstruct failed; falling back to CPU" error=err
+                    use_cuda_activity[] = false
+                    update_activity_field!(CPUBackend(), activity[], topk_buf)
+                end
+            else
+                update_activity_field!(CPUBackend(), activity[], topk_buf)
+            end
         end
         activity[] = activity[]
     end
@@ -278,7 +314,8 @@ function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = C
     perf_label = Label(inspector[10, 1],
         lift(token_idx, selected_block, fps_obs) do t, b, f
             backend_name = backend isa CUDABackend ? "CUDABackend" : "CPUBackend"
-            cuda_str = cuda_avail ? "true" : "false"
+            cuda_str = backend isa CUDABackend ? (cuda_avail ? "true" : "false") :
+                       "n/a (CPUBackend)"
             cache_str = cache === nothing ? "off (fallback)" :
                 "$(cache.n_blocks)×$(cache.n_tokens)×$(cache.top_k)"
             act_path = use_cuda_activity[] ? "CUDA kernels" : "CPU kernels"
@@ -297,22 +334,27 @@ function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = C
         range = 0:(cache === nothing ? 300 : cache.n_tokens - 1),
         startvalue = 0, width = 600)
     suppress_slider_cb = Ref(false)
+    prev_token = Ref(0)
     on(token_slider.value) do v
-        token_idx[] = v
         suppress_slider_cb[] && return
-        # Inspector uses the heavy per-(block,token) simulate_router_frame
-        # so logits/probs reflect the SELECTED block — the cache only stores
-        # top-k/entropy/confidence per block.
+        token_idx[] = v
         new_frame = simulate_router_frame(bundle, selected_block[], v; backend=backend, seed=seed[])
         current_frame[] = new_frame
-        # Heatmap reflects the cached activity field at this token (or the
-        # selected-block fallback if cache is off).
-        _step_activity!(v)
+        if cache !== nothing && v < prev_token[]
+            _reconstruct_activity!(v)
+        else
+            _step_activity!(v)
+        end
+        prev_token[] = v
     end
 
     play_btn = Button(timeline[1, 2], label = lift(p -> p ? "⏸ Pause" : "▶ Play", is_playing))
     on(play_btn.clicks) do _
         is_playing[] = !is_playing[]
+        if !is_playing[]
+            current_frame[] = simulate_router_frame(bundle, selected_block[], token_idx[];
+                                                    backend=backend, seed=seed[])
+        end
         if is_playing[]
             if play_task[] !== nothing && !istaskdone(play_task[])
                 schedule(play_task[], InterruptException(); error=true)
@@ -322,9 +364,13 @@ function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = C
                 try
                     max_t = cache === nothing ? 300 : cache.n_tokens - 1
                     while is_playing[]
-                        # Step the timeline.
                         nxt = token_idx[] + 1
-                        if nxt > max_t; nxt = 0; end
+                        if nxt > max_t
+                            nxt = 0
+                            _reconstruct_activity!(0)
+                        else
+                            _step_activity!(nxt)
+                        end
                         token_idx[] = nxt
                         suppress_slider_cb[] = true
                         try
@@ -332,17 +378,10 @@ function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = C
                         finally
                             suppress_slider_cb[] = false
                         end
-                        # Update the heatmap activity field directly from the
-                        # cache; only update the inspector frame when needed
-                        # (it's the more expensive call).
-                        _step_activity!(nxt)
-                        # Refresh selected-block logits/probs less often than
-                        # the heatmap (every ~5 ticks) to keep the loop fast.
                         if nxt % 5 == 0
                             current_frame[] = simulate_router_frame(bundle, selected_block[], nxt;
                                                                     backend=backend, seed=seed[])
                         end
-                        # FPS estimate (exponential moving average).
                         now = time()
                         dt = now - last_tick_time[]
                         last_tick_time[] = now

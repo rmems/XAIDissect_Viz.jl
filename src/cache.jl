@@ -46,7 +46,6 @@ metadata needed to reconstruct the activity field deterministically.
 Fields:
 - `n_blocks`, `n_experts`, `n_tokens`, `top_k`
 - `seed`                — RNG seed used to populate the cache
-- `frames`              — `Vector{AtmosphereFrameBatch}` of length `n_tokens`
 - `topk`                — `n_blocks × top_k × n_tokens` `Array{Int32,3}` (flat view)
 - `entropy`             — `n_blocks × n_tokens` `Matrix{Float32}`
 - `confidence`          — `n_blocks × n_tokens` `Matrix{Float32}`
@@ -57,7 +56,6 @@ struct RouterFrameCache
     n_tokens::Int
     top_k::Int
     seed::Int
-    frames::Vector{AtmosphereFrameBatch}
     topk::Array{Int32,3}            # n_blocks × top_k × n_tokens
     entropy::Matrix{Float32}        # n_blocks × n_tokens
     confidence::Matrix{Float32}     # n_blocks × n_tokens
@@ -88,6 +86,10 @@ function build_frame_cache(bundle::XAIReportBundle;
                            seed::Integer = 42,
                            top_k::Integer = 2)
     n_tokens >= 0 || throw(ArgumentError("n_tokens must be >= 0"))
+    haskey(bundle.metadata, "n_blocks") ||
+        throw(ArgumentError("bundle.metadata missing \"n_blocks\""))
+    haskey(bundle.metadata, "n_experts") ||
+        throw(ArgumentError("bundle.metadata missing \"n_experts\""))
     n_blocks = bundle.metadata["n_blocks"]::Int
     n_experts = bundle.metadata["n_experts"]::Int
     k = Int(top_k)
@@ -98,7 +100,6 @@ function build_frame_cache(bundle::XAIReportBundle;
     topk = Array{Int32,3}(undef, n_blocks, k, n_slots)
     entropy = Matrix{Float32}(undef, n_blocks, n_slots)
     confidence = Matrix{Float32}(undef, n_blocks, n_slots)
-    frames = Vector{AtmosphereFrameBatch}(undef, n_slots)
 
     @info "Building router frame cache" n_blocks n_experts n_tokens=n_tokens top_k=k seed=seed
     for t in 0:n_tokens
@@ -111,14 +112,10 @@ function build_frame_cache(bundle::XAIReportBundle;
             entropy[b, slot] = s.entropy_by_block[b]
             confidence[b, slot] = s.confidence_by_block[b]
         end
-        frames[slot] = AtmosphereFrameBatch(t,
-                                            copy(s.topk_by_block),
-                                            copy(s.entropy_by_block),
-                                            copy(s.confidence_by_block))
     end
 
     return RouterFrameCache(n_blocks, n_experts, Int(n_tokens) + 1, k, Int(seed),
-                            frames, topk, entropy, confidence)
+                            topk, entropy, confidence)
 end
 
 """
@@ -172,22 +169,22 @@ function activity_matrix_for_token(cache::RouterFrameCache, token_idx::Integer;
                                    boost::Float32 = 0.55f0,
                                    backend::ComputeBackend = CPUBackend())::Matrix{Float32}
     _validate_token_idx(cache, token_idx)
+    slot_end = Int(token_idx) + 1
     activity = zeros(Float32, cache.n_blocks, cache.n_experts)
     if backend isa CUDABackend
-        # Run the sweep on-device and copy back at the end.
         _ensure_cuda_kernels!()
         upload = Base.invokelatest(getfield, XAIDissectViz, :CuArray)
         download = Base.invokelatest(getfield, XAIDissectViz, :Array)
         act_gpu = upload(activity)
-        for t in 0:Int(token_idx)
-            tk = topk_matrix_for_token(cache, t)
-            tk_gpu = upload(tk)
+        tk_gpu_all = upload(cache.topk[:, :, 1:slot_end])
+        for t in 1:slot_end
+            tk_gpu = view(tk_gpu_all, :, :, t)
             update_activity_field!(backend, act_gpu, tk_gpu; decay=decay, boost=boost)
         end
         return Matrix{Float32}(download(act_gpu))
     else
-        for t in 0:Int(token_idx)
-            tk = topk_matrix_for_token(cache, t)
+        for t in 1:slot_end
+            tk = view(cache.topk, :, :, t)
             update_activity_field!(backend, activity, tk; decay=decay, boost=boost)
         end
         return activity

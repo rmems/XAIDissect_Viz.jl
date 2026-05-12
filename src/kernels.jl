@@ -72,21 +72,6 @@ function apply_topk_boosts_cpu!(activity::AbstractMatrix{Float32},
     return activity
 end
 
-"""
-    compute_activity_statistics_cpu(activity) -> NamedTuple
-
-Return `(mean, max, min, std)` summary statistics for the activity field. Used
-by the performance label in the atmosphere viewer.
-"""
-function compute_activity_statistics_cpu(activity::AbstractMatrix{Float32})
-    return (
-        mean = Float32(mean(activity)),
-        max  = Float32(maximum(activity)),
-        min  = Float32(minimum(activity)),
-        std  = Float32(length(activity) > 1 ? std(activity) : 0f0),
-    )
-end
-
 # --- Public dispatch wrapper ---
 
 """
@@ -114,16 +99,17 @@ end
 # --- CUDA dispatch (lazy-loaded) ---
 
 const _CUDA_KERNELS_LOADED = Ref(false)
+const _CUDA_KERNELS_LOCK = ReentrantLock()
 const _CUDA_KERNELS_FILE = joinpath(@__DIR__, "kernels_cuda.jl")
 
-# Load the CUDA kernel definitions on first use. Uses `@eval` so that the
-# `CUDA.@cuda` macro is in scope when `kernels_cuda.jl` is parsed. Subsequent
-# calls are no-ops.
 function _ensure_cuda_kernels!()
     _CUDA_KERNELS_LOADED[] && return nothing
-    @eval XAIDissectViz using CUDA
-    @eval XAIDissectViz include($_CUDA_KERNELS_FILE)
-    _CUDA_KERNELS_LOADED[] = true
+    lock(_CUDA_KERNELS_LOCK) do
+        _CUDA_KERNELS_LOADED[] && return nothing
+        @eval XAIDissectViz using CUDA
+        @eval XAIDissectViz include($_CUDA_KERNELS_FILE)
+        _CUDA_KERNELS_LOADED[] = true
+    end
     return nothing
 end
 
@@ -133,8 +119,21 @@ function update_activity_field!(::CUDABackend,
                                 decay::Float32 = 0.92f0,
                                 boost::Float32 = 0.55f0)
     _ensure_cuda_kernels!()
-    # Resolve the lazily-defined kernel via getfield + invokelatest so we don't
-    # trip Julia 1.12's stricter world-age semantics.
+    CuArray_T = Base.invokelatest(getfield, XAIDissectViz, :CuArray)
+    is_gpu = Base.invokelatest(isa, activity, CuArray_T)
+    if !is_gpu
+        cuda_ok = try; Base.invokelatest(getfield, XAIDissectViz, :CUDA) |>
+                       m -> Base.invokelatest(getfield, m, :functional) |>
+                       f -> Base.invokelatest(f); catch; false; end
+        if cuda_ok
+            throw(ArgumentError(
+                "CUDABackend requires CuArray inputs; got CPU $(typeof(activity)). " *
+                "Upload with CuArray(...) first, or use CPUBackend()."))
+        else
+            @warn "CUDABackend with CPU arrays and CUDA non-functional; falling back to CPU"
+            return update_activity_field_cpu!(activity, topk_by_block; decay=decay, boost=boost)
+        end
+    end
     f = Base.invokelatest(getfield, XAIDissectViz, :_update_activity_field_cuda!)
     return Base.invokelatest(f, activity, topk_by_block, decay, boost)
 end
