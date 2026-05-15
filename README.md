@@ -39,12 +39,50 @@ See GPU support note below. This project never vendors weights, CUDA binaries, o
 ## GPU Support
 XAIDissectViz uses CUDA.jl for optional GPU acceleration of router simulation and visual kernels. It does **not** vendor or redistribute the NVIDIA CUDA Toolkit, drivers, or any model weights. Users are responsible for installing compatible NVIDIA drivers and accepting upstream licenses.
 
+## CUDA Atmosphere Engine
+
+The atmosphere viewer animates a synthetic `n_blocks × n_experts` activity field on top of the real xai-dissect metadata. The CPU path is canonical and always works. CUDA kernels accelerate the **visual activity field** — they do not run model inference and never touch Grok-1 weights.
+
+- The CPU path is the reference implementation and the default. CPU-only CI runs the full test suite.
+- CUDA kernels (`activity_decay_kernel!`, `topk_boost_kernel!`, `clamp_kernel!`) update the activity field on `CuArray`s when `CUDABackend()` is selected and `CUDA.functional()` is true. They are loaded lazily on first use so `using XAIDissectViz` stays cheap on headless / no-GPU hosts.
+- Router dynamics are still simulated on top of real xai-dissect metadata. The package never loads, vendors, or distributes Grok-1 weights.
+- A `RouterFrameCache` precomputes per-token top-k / entropy / confidence at launch via `simulate_router_topk_batch`, so the play loop only ticks `update_activity_field!` and a small inspector frame instead of the full synthetic forward pass.
+
+### New public API
+
+```julia
+update_activity_field!         # CPU + CUDA dispatch wrapper
+simulate_router_topk_batch     # cheap batched top-k/entropy/confidence
+RouterFrameCache               # precomputed timeline cache
+build_frame_cache              # fill a cache for n_tokens
+get_frame                      # (block, token) -> cached state
+topk_matrix_for_token          # n_blocks × top_k Int32 matrix
+activity_matrix_for_token      # reconstructed activity at token
+```
+
+### Run the CUDA benchmark
+
+```bash
+julia --project examples/bench_cuda_atmosphere.jl
+```
+
+This script benchmarks `update_activity_field!` on CPU and (when `CUDA.functional()`) on CUDA, with warmup + `CUDA.@sync`, and verifies that one CUDA step matches the CPU reference within `atol=1e-5`. It uses a hand-built minimal `XAIReportBundle` when `XAI_DISSECT_REPORTS` is unset, so it runs on a clean checkout without model artifacts.
+
+### Run the CUDA atmosphere demo
+
+```bash
+ENV["XAI_DISSECT_REPORTS"]=/path/to/grok1_run julia --project examples/grok_atmosphere_cuda_demo.jl
+```
+
+Loads a real xai-dissect report bundle and launches `launch_atmosphere(bundle; backend = CUDABackend())` when CUDA is functional, with a clean fallback to `CPUBackend()` otherwise. Requires a working display / OpenGL context (use `xvfb-run` on headless servers).
+
 ---
 
-**Status**: CPU/CUDA backends on `feat/router-cpu-cuda-backends` branch; addresses GitHub issue #1 (Load xai-dissect JSON reports into typed Julia structs).
-- CPU router logits / probability / top-k utilities
-- Strict real-JSON loader (`load_report_bundle`) parsing the 5 xai-dissect reports
-- Typed structs: `RouterRecord`, `ExpertRecord`, `TensorMetricRecord`, `SAAQReadinessRecord`, `XAIReportBundle`
+**Status**: CUDA atmosphere engine on `feat/cuda-atmosphere-engine` branch on top of the merged CPU/CUDA backends from PR #2.
+- CPU + CUDA `update_activity_field!` (decay → boost → clamp)
+- `RouterFrameCache` + batched `simulate_router_topk_batch`
+- `launch_atmosphere` integration: cached play loop, perf label, FPS counter
+- CUDA bench + demo scripts; weights never loaded
 
 **Roadmap**: Create visual representations of xai-dissect Grok-1 report metadata for educational purposes.
 - Load full 'xai-dissect' json reports
@@ -52,3 +90,4 @@ XAIDissectViz uses CUDA.jl for optional GPU acceleration of router simulation an
 - Render router risk and readiness heatmap
 - Simulate router logits and tok-k experts selection
 - Build an interactive GLMakie Grok-1 atmosphere view
+- CUDA-accelerated activity-field animation
