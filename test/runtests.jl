@@ -228,8 +228,13 @@ end
         exit(2)
     end
     """
+    # Strip XAIVIZ_CUDA_AVAILABLE from the subprocess environment so the
+    # env-var shortcut doesn't fire and the monkey-patched find_package
+    # path is actually exercised (Devin review feedback).
+    proc_env = copy(ENV)
+    delete!(proc_env, "XAIVIZ_CUDA_AVAILABLE")
     proc = run(pipeline(
-        `julia --project=$(dirname(@__DIR__)) -e $script`;
+        addenv(`julia --project=$(dirname(@__DIR__)) -e $script`, proc_env);
         stdout=devnull, stderr=devnull); wait=false)
     wait(proc)
     @test proc.exitcode == 0
