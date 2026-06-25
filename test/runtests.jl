@@ -203,22 +203,26 @@ end
 end
 
 @testset "cuda_available: missing CUDA.jl (Base.find_package branch)" begin
-    # Run a subprocess with XAIVIZ_CUDA_AVAILABLE unset and CUDA.jl removed
-    # from the load path.  This exercises the Base.find_package("CUDA") ===
-    # nothing path without affecting the current session's loaded modules.
+    # Exercise the Base.find_package("CUDA") === nothing path by running a
+    # subprocess that patches find_package before loading the package.
+    # This avoids manipulating DEPOT_PATH which breaks package resolution.
     script = raw"""
-    # Strip CUDA.jl from the load path so Base.find_package returns nothing.
-    filter!(p -> !occursin("CUDA", string(p)), LOAD_PATH)
-    empty!(Base.LOAD_PATH)  # nuclear option
-    push!(Base.LOAD_PATH, "@")
-    push!(Base.LOAD_PATH, "@stdlib")
-    popfirst!(DEPOT_PATH)  # drop the project depot so CUDA.jl is unreachable
+    # Monkey-patch Base.find_package to pretend CUDA.jl is not installed.
+    _orig_ff = Base.find_package
+    function Base.find_package(name::String)
+        name == "CUDA" && return nothing
+        return _orig_ff(name)
+    end
     try
         using XAIDissectViz
+        # cuda_available() must return false — Base.find_package said no CUDA
         result = cuda_available()
-        # Must be false — CUDA.jl is unreachable from this load path
         println("RESULT=", result)
-        exit(result == false ? 0 : 1)
+        @assert result == false "Expected false, got $result"
+        # CUDA.jl must not have been imported
+        cuda_id = Base.PkgId(Base.UUID("052768ef-5323-5732-b1bb-66c8b64840ba"), "CUDA")
+        @assert !haskey(Base.loaded_modules, cuda_id) "CUDA.jl was loaded unexpectedly"
+        exit(0)
     catch e
         println("ERROR=", e)
         exit(2)
