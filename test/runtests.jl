@@ -139,7 +139,13 @@ end
 end
 
 @testset "CUDA path (if available)" begin
-    if has_cuda()
+    # Respect the env-var override so this test never loads CUDA.jl on
+    # CPU-only CI or when the user opts out via XAIVIZ_CUDA_AVAILABLE=false.
+    env = lowercase(strip(get(ENV, "XAIVIZ_CUDA_AVAILABLE", "")))
+    if env == "false"
+        @test has_cuda() == false
+        @info "XAIVIZ_CUDA_AVAILABLE=false — skipping CUDA path test"
+    elseif has_cuda()
         @test has_cuda() == true
         bundle = _minimal_bundle()
         frame = simulate_router_frame(bundle, 3, 9; backend=CUDABackend())
@@ -196,6 +202,35 @@ end
     end
 end
 
+@testset "cuda_available: missing CUDA.jl (Base.find_package branch)" begin
+    # Run a subprocess with XAIVIZ_CUDA_AVAILABLE unset and CUDA.jl removed
+    # from the load path.  This exercises the Base.find_package("CUDA") ===
+    # nothing path without affecting the current session's loaded modules.
+    script = raw"""
+    # Strip CUDA.jl from the load path so Base.find_package returns nothing.
+    filter!(p -> !occursin("CUDA", string(p)), LOAD_PATH)
+    empty!(Base.LOAD_PATH)  # nuclear option
+    push!(Base.LOAD_PATH, "@")
+    push!(Base.LOAD_PATH, "@stdlib")
+    popfirst!(DEPOT_PATH)  # drop the project depot so CUDA.jl is unreachable
+    try
+        using XAIDissectViz
+        result = cuda_available()
+        # Must be false — CUDA.jl is unreachable from this load path
+        println("RESULT=", result)
+        exit(result == false ? 0 : 1)
+    catch e
+        println("ERROR=", e)
+        exit(2)
+    end
+    """
+    proc = run(pipeline(
+        `julia --project=$(dirname(@__DIR__)) -e $script`;
+        stdout=devnull, stderr=devnull); wait=false)
+    wait(proc)
+    @test proc.exitcode == 0
+end
+
 @testset "load_json_report" begin
     mktempdir() do tmpdir
         path = joinpath(tmpdir, "tiny.json")
@@ -225,17 +260,8 @@ end
 
 # --- CUDA atmosphere engine -------------------------------------------------
 #
-# CUDA-guarded tests use a local probe rather than `has_cuda()` because the
-# probe is robust against Julia 1.12's stricter world-age semantics. CPU-only
-# CI never enters the CUDA branches; the CPU-side assertions still run.
-function _cuda_functional()
-    try
-        @eval import CUDA
-        return @eval CUDA.functional()
-    catch
-        return false
-    end
-end
+# CUDA-guarded tests delegate to cuda_available() which handles world-age
+# safety and caching.  CPU-only CI never enters the CUDA branches.
 
 @testset "update_activity_field! CPU: values stay in [0,1]" begin
     n_blocks, n_experts, top_k = 16, 8, 2
@@ -274,7 +300,7 @@ end
 end
 
 @testset "update_activity_field! CPU vs CUDA match (gated)" begin
-    if _cuda_functional()
+    if cuda_available()
         # `import` (not `using`) avoids the `CUDABackend` name collision with
         # XAIDissectViz; we always qualify XAIDissectViz.CUDABackend below.
         @eval import CUDA
