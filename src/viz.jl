@@ -33,14 +33,12 @@ end
 
 const _ATMOSPHERE_CUDA_OK = Ref{Union{Nothing,Bool}}(nothing)
 
+# Resolve CUDA functionality for the atmosphere, reusing the package-wide
+# soft probe (env-var override + Base.find_package + cached result) so a
+# CUDABackend request on a CPU-only host never eagerly imports CUDA.jl.
 function _atmosphere_cuda_functional!()::Bool
     _ATMOSPHERE_CUDA_OK[] !== nothing && return _ATMOSPHERE_CUDA_OK[]::Bool
-    ok = try
-        @eval XAIDissectViz using CUDA
-        @eval XAIDissectViz CUDA.functional()
-    catch
-        false
-    end
+    ok = cuda_available()
     _ATMOSPHERE_CUDA_OK[] = ok
     return ok
 end

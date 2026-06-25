@@ -18,7 +18,7 @@ isempty(reports_dir) && error(
 bundle = load_report_bundle(reports_dir)
 println("Loaded bundle: provenance=$(bundle.provenance), routers=$(length(bundle.routers)), experts=$(length(bundle.experts))")
 
-backend = has_cuda() ? CUDABackend() : CPUBackend()
+backend = cuda_available() ? CUDABackend() : CPUBackend()
 println("Using backend: $(typeof(backend))")
 
 launch_atmosphere(bundle; backend = backend)

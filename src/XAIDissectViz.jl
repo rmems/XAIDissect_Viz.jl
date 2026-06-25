@@ -20,7 +20,7 @@ export load_report_bundle,
        RouterFrameCache,
        build_frame_cache, get_frame,
        topk_matrix_for_token, activity_matrix_for_token,
-       CPUBackend, CUDABackend, has_cuda,
+       CPUBackend, CUDABackend, has_cuda, cuda_available,
        router_logits, router_probs, topk_experts,
        XAIReportBundle, RouterRecord, ExpertRecord, TensorMetricRecord,
        SAAQReadinessRecord, RouterFrame, AtmosphereState

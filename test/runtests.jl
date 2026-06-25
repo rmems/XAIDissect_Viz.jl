@@ -156,11 +156,14 @@ end
     @test isdefined(XAIDissectViz, :simulate_router_frame)
     @test isdefined(XAIDissectViz, :XAIReportBundle)
     @test isdefined(XAIDissectViz, :RouterFrame)
+    @test isdefined(XAIDissectViz, :cuda_available)
 end
 
 @testset "Headless: non-visual API works without GLMakie loaded" begin
     glmakie_id = Base.PkgId(Base.UUID("e9467ef8-e4e7-5192-8a1a-b1aee30e663a"), "GLMakie")
+    cuda_id   = Base.PkgId(Base.UUID("052768ef-5323-5732-b1bb-66c8b64840ba"), "CUDA")
     @test !haskey(Base.loaded_modules, glmakie_id)
+    @test !haskey(Base.loaded_modules, cuda_id)
 
     bundle = _minimal_bundle()
     frame = simulate_router_frame(bundle, 2, 3)
@@ -172,7 +175,25 @@ end
 
     @test_throws ArgumentError load_report_bundle("")
 
+    # GLMakie must NOT have been imported (no DISPLAY / OpenGL on CI)
     @test !haskey(Base.loaded_modules, glmakie_id)
+    # CUDA must NOT have been imported during CPU-only operations
+    @test !haskey(Base.loaded_modules, cuda_id)
+end
+
+@testset "cuda_available: soft probe" begin
+    # On CI, XAIVIZ_CUDA_AVAILABLE=false should make cuda_available() return
+    # false immediately without touching CUDA.jl.
+    if get(ENV, "XAIVIZ_CUDA_AVAILABLE", "") == "false"
+        @test cuda_available() == false
+        cuda_id = Base.PkgId(Base.UUID("052768ef-5323-5732-b1bb-66c8b64840ba"), "CUDA")
+        @test !haskey(Base.loaded_modules, cuda_id)
+    else
+        # Outside CI: just verify it returns a bool without erroring
+        result = cuda_available()
+        @test result isa Bool
+        @info "cuda_available() = $result"
+    end
 end
 
 @testset "load_json_report" begin
