@@ -139,7 +139,13 @@ end
 end
 
 @testset "CUDA path (if available)" begin
-    if has_cuda()
+    # Respect the env-var override so this test never loads CUDA.jl on
+    # CPU-only CI or when the user opts out via XAIVIZ_CUDA_AVAILABLE=false.
+    env = lowercase(strip(get(ENV, "XAIVIZ_CUDA_AVAILABLE", "")))
+    if env == "false"
+        @test has_cuda() == false
+        @info "XAIVIZ_CUDA_AVAILABLE=false — skipping CUDA path test"
+    elseif has_cuda()
         @test has_cuda() == true
         bundle = _minimal_bundle()
         frame = simulate_router_frame(bundle, 3, 9; backend=CUDABackend())
@@ -156,11 +162,14 @@ end
     @test isdefined(XAIDissectViz, :simulate_router_frame)
     @test isdefined(XAIDissectViz, :XAIReportBundle)
     @test isdefined(XAIDissectViz, :RouterFrame)
+    @test isdefined(XAIDissectViz, :cuda_available)
 end
 
 @testset "Headless: non-visual API works without GLMakie loaded" begin
     glmakie_id = Base.PkgId(Base.UUID("e9467ef8-e4e7-5192-8a1a-b1aee30e663a"), "GLMakie")
+    cuda_id   = Base.PkgId(Base.UUID("052768ef-5323-5732-b1bb-66c8b64840ba"), "CUDA")
     @test !haskey(Base.loaded_modules, glmakie_id)
+    @test !haskey(Base.loaded_modules, cuda_id)
 
     bundle = _minimal_bundle()
     frame = simulate_router_frame(bundle, 2, 3)
@@ -172,7 +181,68 @@ end
 
     @test_throws ArgumentError load_report_bundle("")
 
+    # GLMakie must NOT have been imported (no DISPLAY / OpenGL on CI)
     @test !haskey(Base.loaded_modules, glmakie_id)
+    # CUDA must NOT have been imported during CPU-only operations
+    @test !haskey(Base.loaded_modules, cuda_id)
+end
+
+@testset "cuda_available: soft probe" begin
+    # On CI, XAIVIZ_CUDA_AVAILABLE=false should make cuda_available() return
+    # false immediately without touching CUDA.jl.
+    if get(ENV, "XAIVIZ_CUDA_AVAILABLE", "") == "false"
+        @test cuda_available() == false
+        cuda_id = Base.PkgId(Base.UUID("052768ef-5323-5732-b1bb-66c8b64840ba"), "CUDA")
+        @test !haskey(Base.loaded_modules, cuda_id)
+    else
+        # Outside CI: just verify it returns a bool without erroring
+        result = cuda_available()
+        @test result isa Bool
+        @info "cuda_available() = $result"
+    end
+end
+
+@testset "cuda_available: missing CUDA.jl (Base.find_package branch)" begin
+    # Exercise the Base.find_package("CUDA") === nothing path by running a
+    # subprocess that patches find_package before loading the package.
+    # This avoids manipulating DEPOT_PATH which breaks package resolution.
+    script = raw"""
+    # Monkey-patch Base.find_package to pretend CUDA.jl is not installed.
+    # Use invoke(Tuple{AbstractString}) to bypass our patched String method
+    # and dispatch to the broader AbstractString method instead.
+    function Base.find_package(name::String)
+        name == "CUDA" && return nothing
+        return invoke(Base.find_package, Tuple{AbstractString}, name)
+    end
+    try
+        using XAIDissectViz
+        # cuda_available() must return false — Base.find_package said no CUDA
+        result = cuda_available()
+        println("RESULT=", result)
+        @assert result == false "Expected false, got $result"
+        # CUDA.jl must not have been imported
+        cuda_id = Base.PkgId(Base.UUID("052768ef-5323-5732-b1bb-66c8b64840ba"), "CUDA")
+        @assert !haskey(Base.loaded_modules, cuda_id) "CUDA.jl was loaded unexpectedly"
+        exit(0)
+    catch e
+        println("ERROR=", e)
+        exit(2)
+    end
+    """
+    # Strip XAIVIZ_CUDA_AVAILABLE from the subprocess environment so the
+    # env-var shortcut doesn't fire and the monkey-patched find_package
+    # path is actually exercised (Devin review feedback).
+    # Use inherit=false so the parent's XAIVIZ_CUDA_AVAILABLE doesn't leak.
+    proc_env = Dict{String,String}()
+    for (k, v) in ENV
+        k == "XAIVIZ_CUDA_AVAILABLE" && continue
+        proc_env[k] = v
+    end
+    proc = run(pipeline(
+        addenv(`julia --project=$(dirname(@__DIR__)) -e $script`, proc_env; inherit=false);
+        stdout=devnull, stderr=devnull); wait=false)
+    wait(proc)
+    @test proc.exitcode == 0
 end
 
 @testset "load_json_report" begin
@@ -204,17 +274,8 @@ end
 
 # --- CUDA atmosphere engine -------------------------------------------------
 #
-# CUDA-guarded tests use a local probe rather than `has_cuda()` because the
-# probe is robust against Julia 1.12's stricter world-age semantics. CPU-only
-# CI never enters the CUDA branches; the CPU-side assertions still run.
-function _cuda_functional()
-    try
-        @eval import CUDA
-        return @eval CUDA.functional()
-    catch
-        return false
-    end
-end
+# CUDA-guarded tests delegate to cuda_available() which handles world-age
+# safety and caching.  CPU-only CI never enters the CUDA branches.
 
 @testset "update_activity_field! CPU: values stay in [0,1]" begin
     n_blocks, n_experts, top_k = 16, 8, 2
@@ -253,7 +314,7 @@ end
 end
 
 @testset "update_activity_field! CPU vs CUDA match (gated)" begin
-    if _cuda_functional()
+    if cuda_available()
         # `import` (not `using`) avoids the `CUDABackend` name collision with
         # XAIDissectViz; we always qualify XAIDissectViz.CUDABackend below.
         @eval import CUDA

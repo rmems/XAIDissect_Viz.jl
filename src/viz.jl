@@ -31,19 +31,10 @@ function launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = CP
     return Base.invokelatest(_launch_atmosphere, bundle; backend=backend)
 end
 
-const _ATMOSPHERE_CUDA_OK = Ref{Union{Nothing,Bool}}(nothing)
-
-function _atmosphere_cuda_functional!()::Bool
-    _ATMOSPHERE_CUDA_OK[] !== nothing && return _ATMOSPHERE_CUDA_OK[]::Bool
-    ok = try
-        @eval XAIDissectViz using CUDA
-        @eval XAIDissectViz CUDA.functional()
-    catch
-        false
-    end
-    _ATMOSPHERE_CUDA_OK[] = ok
-    return ok
-end
+# Resolve CUDA functionality for the atmosphere via the package-wide soft
+# probe in cuda_available() (backend.jl).  That function already handles
+# env-var override, Base.find_package, caching, and world-age-safe
+# @eval CUDA.functional().  No extra Ref needed here.
 
 function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = CPUBackend())
     n_blocks = get(bundle.metadata, "n_blocks", 64)::Int
@@ -63,15 +54,7 @@ function _launch_atmosphere(bundle::XAIReportBundle; backend::ComputeBackend = C
         cache = nothing
     end
 
-    cuda_avail = if backend isa CUDABackend
-        try
-            _atmosphere_cuda_functional!()
-        catch
-            false
-        end
-    else
-        false
-    end
+    cuda_avail = backend isa CUDABackend ? cuda_available() : false
 
     # --- State ---
     selected_block = Observable(1)

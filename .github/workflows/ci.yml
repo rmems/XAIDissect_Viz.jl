@@ -36,4 +36,6 @@ jobs:
         run: julia --project=. -e 'using XAIDissectViz; println("XAIDissectViz loaded headlessly")'
 
       - name: Run tests
+        env:
+          XAIVIZ_CUDA_AVAILABLE: "false"
         run: julia --project=. -e 'using Test; include("test/runtests.jl")'
