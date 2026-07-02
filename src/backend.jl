@@ -43,7 +43,8 @@ function cuda_available()
                 return false
             end
         else
-            _cuda_available_cache[] = false
+            # Don't cache — return false without polluting the cache so
+            # a later call without the env var can still probe CUDA.
             return false
         end
     end
