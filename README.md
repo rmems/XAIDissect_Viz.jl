@@ -18,7 +18,7 @@ using XAIDissectViz
 ENV["XAI_DISSECT_REPORTS"] = "/path/to/grok1_run2_after_fixes_*"
 
 bundle = load_report_bundle(ENV["XAI_DISSECT_REPORTS"])
-backend = has_cuda() ? CUDABackend() : CPUBackend()
+backend = cuda_available() ? CUDABackend() : CPUBackend()
 launch_atmosphere(bundle; backend = backend)
 ```
 
@@ -26,7 +26,7 @@ See `examples/grok_atmosphere_demo.jl`.
 
 ## Running tests
 ```bash
-julia --project -e 'using Test; include("test/runtests.jl")'
+julia --project=. -e 'using Pkg; Pkg.test()'
 ```
 
 ## Relationship to xai-dissect
@@ -44,7 +44,7 @@ XAIDissectViz uses CUDA.jl for optional GPU acceleration of router simulation an
 The atmosphere viewer animates a synthetic `n_blocks × n_experts` activity field on top of the real xai-dissect metadata. The CPU path is canonical and always works. CUDA kernels accelerate the **visual activity field** — they do not run model inference and never touch Grok-1 weights.
 
 - The CPU path is the reference implementation and the default. CPU-only CI runs the full test suite.
-- CUDA kernels (`activity_decay_kernel!`, `topk_boost_kernel!`, `clamp_kernel!`) update the activity field on `CuArray`s when `CUDABackend()` is selected and `CUDA.functional()` is true. They are loaded lazily on first use so `using XAIDissectViz` stays cheap on headless / no-GPU hosts.
+- CUDA kernels (`activity_decay_kernel!`, `topk_boost_kernel!`, `clamp_kernel!`) update the activity field on `CuArray`s when `CUDABackend()` is selected and `cuda_available()` is true. They are loaded lazily on first use so `using XAIDissectViz` stays cheap on headless / no-GPU hosts.
 - Router dynamics are still simulated on top of real xai-dissect metadata. The package never loads, vendors, or distributes Grok-1 weights.
 - A `RouterFrameCache` precomputes per-token top-k / entropy / confidence at launch via `simulate_router_topk_batch`, so the play loop only ticks `update_activity_field!` and a small inspector frame instead of the full synthetic forward pass.
 
@@ -78,7 +78,7 @@ Loads a real xai-dissect report bundle and launches `launch_atmosphere(bundle; b
 
 ---
 
-**Status**: CUDA atmosphere engine on `feat/cuda-atmosphere-engine` branch on top of the merged CPU/CUDA backends from PR #2.
+**Status**: CUDA atmosphere engine merged in PR #3. Soft CUDA probe added in PR #20.
 - CPU + CUDA `update_activity_field!` (decay → boost → clamp)
 - `RouterFrameCache` + batched `simulate_router_topk_batch`
 - `launch_atmosphere` integration: cached play loop, perf label, FPS counter
@@ -88,6 +88,6 @@ Loads a real xai-dissect report bundle and launches `launch_atmosphere(bundle; b
 - Load full 'xai-dissect' json reports
 - Visualize router, blocks and experts
 - Render router risk and readiness heatmap
-- Simulate router logits and tok-k experts selection
+- Simulate router logits and top-k experts selection
 - Build an interactive GLMakie Grok-1 atmosphere view
 - CUDA-accelerated activity-field animation

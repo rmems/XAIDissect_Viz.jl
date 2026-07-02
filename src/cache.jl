@@ -50,7 +50,7 @@ end
 
 # Token convention: the cache covers token indices 0:(n_tokens-1) inclusive,
 # matching the timeline slider's 0-based range. `_token_pos` maps a token
-# index to a 1-based slot in `frames`/`topk`/`entropy`/`confidence`.
+# index to a 1-based slot in `topk`/`entropy`/`confidence`.
 @inline _token_pos(cache::RouterFrameCache, token_idx::Integer) = Int(token_idx) + 1
 
 function _validate_token_idx(cache::RouterFrameCache, token_idx::Integer)
