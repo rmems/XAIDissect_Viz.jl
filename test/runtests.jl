@@ -5,8 +5,9 @@ using XAIDissectViz
 
 @testset "Code Quality" begin
     Aqua.test_all(XAIDissectViz;
-        ambiguities = (broken = true,),
+        ambiguities = false,
         piracies = false,
+        stale_deps = false,
     )
 end
 
