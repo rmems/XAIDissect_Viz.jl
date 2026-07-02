@@ -41,4 +41,13 @@ jobs:
       - name: Run tests
         env:
           XAIVIZ_CUDA_AVAILABLE: "false"
-        run: julia --project=. -e 'using Pkg; Pkg.test()'
+        run: julia --project=. -e 'using Pkg; Pkg.test(coverage=true)'
+
+      - name: Process coverage
+        run: julia -e 'using Coverage; coverage = process_folder(); LCOV.writefile("lcov.info", coverage)'
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
