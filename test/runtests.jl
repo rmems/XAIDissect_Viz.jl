@@ -1,6 +1,14 @@
 using Test
+using Aqua
 using JSON3
 using XAIDissectViz
+
+@testset "Code Quality" begin
+    Aqua.test_all(XAIDissectViz;
+        ambiguities = (broken = true,),
+        piracies = false,
+    )
+end
 
 # Minimal real-shaped bundle built by hand from struct constructors.
 # No JSON, no random data. Used for tests that need a bundle but should
