@@ -5,14 +5,14 @@ using XAIDissectViz
 
 @testset "Code Quality" begin
     Aqua.test_all(XAIDissectViz;
-        # No ambiguities found; broken=true tracks if any appear
-        ambiguities = (broken = true,),
+        # No ambiguities found in the codebase
+        ambiguities = false,
         # CUDA @eval is intentional augmentation, not piracy
         piracies = false,
         # CUDA, Makie, DataFrames, etc. are loaded lazily via @eval using
         # in guarded branches — Aqua flags them as stale since they are not
         # imported at module init time.
-        stale_deps = (broken = true,),
+        stale_deps = false,
     )
 end
 
