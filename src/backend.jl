@@ -29,6 +29,10 @@ function cuda_available()
     if !isempty(env_override)
         forced = env_override in ("true", "yes", "1")
         if forced
+            # Return cached result if already probed this session
+            if _cuda_available_cache[] !== nothing
+                return _cuda_available_cache[]::Bool
+            end
             try
                 @eval using CUDA
                 result = @eval CUDA.functional()
