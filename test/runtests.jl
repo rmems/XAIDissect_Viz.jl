@@ -1,6 +1,7 @@
 using Test
 using Aqua
 using JSON3
+using Random
 using XAIDissectViz
 
 @testset "Code Quality" begin
@@ -142,7 +143,6 @@ end
 end
 
 @testset "simulate_router_frame: does not mutate global RNG" begin
-    using Random
     bundle = _minimal_bundle()
     Random.seed!(123)
     before = rand(UInt64)
@@ -427,7 +427,6 @@ end
 end
 
 @testset "simulate_router_topk_batch: does not mutate global RNG" begin
-    using Random
     bundle = _minimal_bundle()
     Random.seed!(987)
     before = rand(UInt64)
