@@ -6,8 +6,8 @@ using XAIDissectViz
 
 @testset "Code Quality" begin
     Aqua.test_all(XAIDissectViz;
-        # No ambiguities found in the codebase
-        ambiguities = false,
+        # Enable ambiguity check to catch future regressions
+        ambiguities = true,
         # CUDA @eval is intentional augmentation, not piracy
         piracies = false,
         # CUDA, GLMakie, GraphMakie, Graphs, Observables, Makie are loaded
