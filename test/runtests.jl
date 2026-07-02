@@ -208,10 +208,11 @@ end
     # This avoids manipulating DEPOT_PATH which breaks package resolution.
     script = raw"""
     # Monkey-patch Base.find_package to pretend CUDA.jl is not installed.
-    _orig_ff = Base.find_package
+    # Use invoke(Tuple{AbstractString}) to bypass our patched String method
+    # and dispatch to the broader AbstractString method instead.
     function Base.find_package(name::String)
         name == "CUDA" && return nothing
-        return _orig_ff(name)
+        return invoke(Base.find_package, Tuple{AbstractString}, name)
     end
     try
         using XAIDissectViz
@@ -231,10 +232,14 @@ end
     # Strip XAIVIZ_CUDA_AVAILABLE from the subprocess environment so the
     # env-var shortcut doesn't fire and the monkey-patched find_package
     # path is actually exercised (Devin review feedback).
-    proc_env = copy(ENV)
-    delete!(proc_env, "XAIVIZ_CUDA_AVAILABLE")
+    # Use inherit=false so the parent's XAIVIZ_CUDA_AVAILABLE doesn't leak.
+    proc_env = Dict{String,String}()
+    for (k, v) in ENV
+        k == "XAIVIZ_CUDA_AVAILABLE" && continue
+        proc_env[k] = v
+    end
     proc = run(pipeline(
-        addenv(`julia --project=$(dirname(@__DIR__)) -e $script`, proc_env);
+        addenv(`julia --project=$(dirname(@__DIR__)) -e $script`, proc_env; inherit=false);
         stdout=devnull, stderr=devnull); wait=false)
     wait(proc)
     @test proc.exitcode == 0
