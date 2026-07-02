@@ -6,6 +6,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Julia CPU tests
@@ -38,4 +41,4 @@ jobs:
       - name: Run tests
         env:
           XAIVIZ_CUDA_AVAILABLE: "false"
-        run: julia --project=. -e 'using Test; include("test/runtests.jl")'
+        run: julia --project=. -e 'using Pkg; Pkg.test()'

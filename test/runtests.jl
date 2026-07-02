@@ -1,6 +1,21 @@
 using Test
+using Aqua
 using JSON3
+using Random
 using XAIDissectViz
+
+@testset "Code Quality" begin
+    Aqua.test_all(XAIDissectViz;
+        # Enable ambiguity check to catch future regressions
+        ambiguities = true,
+        # CUDA @eval is intentional augmentation, not piracy
+        piracies = false,
+        # CUDA, GLMakie, GraphMakie, Graphs, Observables, Makie are loaded
+        # lazily via @eval using in guarded branches — Aqua flags them as
+        # stale since they are not imported at module init time.
+        stale_deps = false,
+    )
+end
 
 # Minimal real-shaped bundle built by hand from struct constructors.
 # No JSON, no random data. Used for tests that need a bundle but should
@@ -128,7 +143,6 @@ end
 end
 
 @testset "simulate_router_frame: does not mutate global RNG" begin
-    using Random
     bundle = _minimal_bundle()
     Random.seed!(123)
     before = rand(UInt64)
@@ -413,7 +427,6 @@ end
 end
 
 @testset "simulate_router_topk_batch: does not mutate global RNG" begin
-    using Random
     bundle = _minimal_bundle()
     Random.seed!(987)
     before = rand(UInt64)
