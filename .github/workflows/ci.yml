@@ -44,10 +44,12 @@ jobs:
         run: julia --project=. -e 'using Pkg; Pkg.test(coverage=true)'
 
       - name: Process coverage
-        run: julia --project=test -e 'using Coverage; coverage = process_folder(); LCOV.writefile("lcov.info", coverage)'
+        run: julia -e 'using Pkg; Pkg.add("Coverage"); using Coverage; coverage = process_folder(); LCOV.writefile("lcov.info", coverage)'
 
       - name: Upload coverage
+        if: ${{ !cancelled() && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) }}
         uses: codecov/codecov-action@v4
         with:
           files: lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
