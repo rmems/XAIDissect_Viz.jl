@@ -1,5 +1,7 @@
 # XAIDissectViz.jl
 
+[![codecov](https://codecov.io/gh/rmems/XAIDissect_Viz.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/rmems/XAIDissect_Viz.jl)
+
 **Grok-1 MoE Atmosphere** — Interactive visualization of xai-dissect reports for the 64-block, 8-expert Grok-1 Mixture-of-Experts architecture.
 
 ## What this is
