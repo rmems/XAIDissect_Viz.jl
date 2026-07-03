@@ -19,25 +19,9 @@ using XAIDissectViz
 end
 
 @testset "Formatting" begin
-    # Verify source files are formatted according to .JuliaFormatter.toml.
-    # This test requires JuliaFormatter to be available in the test environment.
-    if Base.find_package("JuliaFormatter") !== nothing
-        @eval using JuliaFormatter
-        # Format in-place and check if any files changed
-        format(".", verbose = false)
-        # Check if any files were modified by the formatter
-        diff_output = read(`git diff --name-only`, String)
-        formatted_files = split(strip(diff_output), '\n')
-        formatted_files = filter(!isempty, formatted_files)
-        if !isempty(formatted_files)
-            @warn "Files need formatting:" formatted_files
-            @test false
-        else
-            @test true
-        end
-    else
-        @info "JuliaFormatter not available — skipping formatting test"
-    end
+    # Formatting is enforced by the dedicated format.yml CI workflow
+    # using the separate format/ environment (avoids dependency conflicts).
+    @info "Formatting checked by .github/workflows/format.yml"
 end
 
 # Minimal real-shaped bundle built by hand from struct constructors.
