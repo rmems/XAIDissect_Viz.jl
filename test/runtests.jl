@@ -23,8 +23,18 @@ end
     # This test requires JuliaFormatter to be available in the test environment.
     if Base.find_package("JuliaFormatter") !== nothing
         @eval using JuliaFormatter
-        # format() returns true if already formatted, false if changes were made
-        @test format(".", verbose = false) == true
+        # Format in-place and check if any files changed
+        format(".", verbose = false)
+        # Check if any files were modified by the formatter
+        diff_output = read(`git diff --name-only`, String)
+        formatted_files = split(strip(diff_output), '\n')
+        formatted_files = filter(!isempty, formatted_files)
+        if !isempty(formatted_files)
+            @warn "Files need formatting:" formatted_files
+            @test false
+        else
+            @test true
+        end
     else
         @info "JuliaFormatter not available — skipping formatting test"
     end
