@@ -36,6 +36,6 @@ jobs:
         run: |
           julia --project=format -e 'using Pkg; Pkg.instantiate(); using JuliaFormatter; format(".", verbose=true)'
           if ! git diff --exit-code; then
-            echo "::error::Formatting issues found. Please run 'julia -e \"using JuliaFormatter; format(\\\".\\\")\"' locally and commit the changes."
+            echo "::error::Formatting issues found. Please run 'julia --project=format -e \"using Pkg; Pkg.instantiate(); using JuliaFormatter; format(\\\".\\\", verbose=true)\"' locally and commit the changes."
             exit 1
           fi
