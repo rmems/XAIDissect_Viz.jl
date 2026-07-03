@@ -24,7 +24,7 @@ end
     if Base.find_package("JuliaFormatter") !== nothing
         @eval using JuliaFormatter
         # format() returns true if already formatted, false if changes were made
-        @test format(".", verbose=false) == true
+        @test format(".", verbose = false) == true
     else
         @info "JuliaFormatter not available — skipping formatting test"
     end
