@@ -15,17 +15,23 @@ function activity_decay_kernel!(activity, decay::Float32)
     return nothing
 end
 
-function topk_boost_kernel!(activity, topk_by_block, boost::Float32,
-                            n_blocks::Int32, n_experts::Int32, top_k::Int32)
+function topk_boost_kernel!(
+    activity,
+    topk_by_block,
+    boost::Float32,
+    n_blocks::Int32,
+    n_experts::Int32,
+    top_k::Int32,
+)
     b = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
     if b > n_blocks
         return nothing
     end
-    @inbounds for k in Int32(1):top_k
+    @inbounds for k = Int32(1):top_k
         e = Int32(topk_by_block[b, k])
         if e >= Int32(1) && e <= n_experts
             v = activity[b, e] + boost
-            activity[b, e] = v > 1f0 ? 1f0 : v
+            activity[b, e] = v > 1.0f0 ? 1.0f0 : v
         end
     end
     return nothing
@@ -42,13 +48,20 @@ function clamp_kernel!(activity, lo::Float32, hi::Float32)
     return nothing
 end
 
-function _update_activity_field_cuda!(activity, topk_by_block,
-                                      decay::Float32, boost::Float32)
+function _update_activity_field_cuda!(
+    activity,
+    topk_by_block,
+    decay::Float32,
+    boost::Float32,
+)
     n = length(activity)
     n_blocks_v, n_experts_v = size(activity)
     top_k_v = size(topk_by_block, 2)
-    size(topk_by_block, 1) == n_blocks_v ||
-        throw(DimensionMismatch("topk_by_block rows ($(size(topk_by_block,1))) must equal n_blocks ($n_blocks_v)"))
+    size(topk_by_block, 1) == n_blocks_v || throw(
+        DimensionMismatch(
+            "topk_by_block rows ($(size(topk_by_block,1))) must equal n_blocks ($n_blocks_v)",
+        ),
+    )
 
     threads_e = 256
     blocks_e = cld(n, threads_e)
@@ -57,9 +70,14 @@ function _update_activity_field_cuda!(activity, topk_by_block,
     threads_b = 128
     blocks_b = cld(n_blocks_v, threads_b)
     CUDA.@cuda threads = threads_b blocks = blocks_b topk_boost_kernel!(
-        activity, topk_by_block, boost,
-        Int32(n_blocks_v), Int32(n_experts_v), Int32(top_k_v))
+        activity,
+        topk_by_block,
+        boost,
+        Int32(n_blocks_v),
+        Int32(n_experts_v),
+        Int32(top_k_v),
+    )
 
-    CUDA.@cuda threads = threads_e blocks = blocks_e clamp_kernel!(activity, 0f0, 1f0)
+    CUDA.@cuda threads = threads_e blocks = blocks_e clamp_kernel!(activity, 0.0f0, 1.0f0)
     return activity
 end
