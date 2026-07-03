@@ -44,6 +44,7 @@ jobs:
         run: julia --project=. -e 'using Pkg; Pkg.test(coverage=true)'
 
       - name: Process coverage
+        if: ${{ !cancelled() }}
         uses: julia-actions/julia-processcoverage@03114f09f119417c3242a9fb6e0b722676aedf38 # v1
 
       - name: Upload coverage
