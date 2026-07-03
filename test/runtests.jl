@@ -18,6 +18,26 @@ using XAIDissectViz
     )
 end
 
+@testset "Formatting" begin
+    # Verify source files are formatted according to .JuliaFormatter.toml.
+    # This test requires JuliaFormatter to be available in the test environment.
+    if Base.find_package("JuliaFormatter") !== nothing
+        @eval using JuliaFormatter
+        # Format in-place and check if any files changed
+        format_result = @eval format(".", verbose=false)
+        # Check git status for changes
+        diff_output = read(`git diff --name-only`, String)
+        formatted_files = split(strip(diff_output), '\n')
+        formatted_files = filter(!isempty, formatted_files)
+        @test isempty(formatted_files) || begin
+            @warn "Files need formatting:" formatted_files
+            false
+        end
+    else
+        @info "JuliaFormatter not available — skipping formatting test"
+    end
+end
+
 # Minimal real-shaped bundle built by hand from struct constructors.
 # No JSON, no random data. Used for tests that need a bundle but should
 # not depend on a real xai-dissect report directory being present.
