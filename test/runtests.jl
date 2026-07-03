@@ -23,8 +23,8 @@ end
     # This test requires JuliaFormatter to be available in the test environment.
     if Base.find_package("JuliaFormatter") !== nothing
         @eval using JuliaFormatter
-        # format() returns true if files were modified, false if already formatted
-        @test format(".", verbose=false) == false
+        # format() returns true if already formatted, false if changes were made
+        @test format(".", verbose=false) == true
     else
         @info "JuliaFormatter not available — skipping formatting test"
     end
