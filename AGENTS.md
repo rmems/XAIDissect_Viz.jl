@@ -38,5 +38,12 @@ Once precompiled, the non-visual API (`using XAIDissectViz`, `simulate_router_fr
 |---|---|
 | Install deps | `julia --project=. -e 'using Pkg; Pkg.instantiate()'` |
 | Precompile | `xvfb-run -a julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'` |
-| Run tests | `julia --project=. -e 'using Test; include("test/runtests.jl")'` |
+| Run tests | `julia --project=. -e 'using Pkg; Pkg.test()'` |
 | Smoke load | `julia --project=. -e 'using XAIDissectViz; println("ok")'` |
+
+### Boundaries and Constraints
+
+1. Do not install Node.js, Python, or Docker services — this is a pure Julia project.
+2. Do not modify the pinned Julia version in `Manifest.toml`.
+3. Only run interactive GUI commands within an X display or via `xvfb-run`.
+4. Use the provided paths for the Julia runtime rather than attempting to download new versions.
