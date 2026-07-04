@@ -38,5 +38,5 @@ Once precompiled, the non-visual API (`using XAIDissectViz`, `simulate_router_fr
 |---|---|
 | Install deps | `julia --project=. -e 'using Pkg; Pkg.instantiate()'` |
 | Precompile | `xvfb-run -a julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'` |
-| Run tests | `julia --project=. -e 'using Test; include("test/runtests.jl")'` |
+| Run tests | julia --project=. -e 'using Pkg; Pkg.test()' |
 | Smoke load | `julia --project=. -e 'using XAIDissectViz; println("ok")'` |
