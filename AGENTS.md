@@ -13,7 +13,7 @@ Julia **1.12** is required (`Manifest.toml` pins `julia_version = "1.12.6"`). Th
 ### Running tests
 
 ```bash
-julia --project=. -e 'using Test; include("test/runtests.jl")'
+julia --project=. -e 'using Pkg; Pkg.test()'
 ```
 
 All tests run headlessly on CPU. CUDA tests are gated and gracefully skip when no GPU is present. The `XAI_DISSECT_REPORTS` env var gates a real-report-load test; it is safe to leave unset.
@@ -38,5 +38,5 @@ Once precompiled, the non-visual API (`using XAIDissectViz`, `simulate_router_fr
 |---|---|
 | Install deps | `julia --project=. -e 'using Pkg; Pkg.instantiate()'` |
 | Precompile | `xvfb-run -a julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'` |
-| Run tests | `julia --project=. -e 'using Test; include("test/runtests.jl")'` |
+| Run tests | `julia --project=. -e 'using Pkg; Pkg.test()'` |
 | Smoke load | `julia --project=. -e 'using XAIDissectViz; println("ok")'` |
