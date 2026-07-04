@@ -20,19 +20,24 @@ multiplies by `decay`, then adds `boost` to the experts selected per block in
 `topk_by_block` (a `n_blocks × top_k` `Int32` matrix), then clamps to `[0, 1]`.
 Out-of-range expert indices are skipped (defensive; tests guard the contract).
 """
-function update_activity_field_cpu!(activity::AbstractMatrix{Float32},
-                                    topk_by_block::AbstractMatrix{<:Integer};
-                                    decay::Float32 = 0.92f0,
-                                    boost::Float32 = 0.55f0)
+function update_activity_field_cpu!(
+    activity::AbstractMatrix{Float32},
+    topk_by_block::AbstractMatrix{<:Integer};
+    decay::Float32 = 0.92f0,
+    boost::Float32 = 0.55f0,
+)
     n_blocks, n_experts = size(activity)
     top_k = size(topk_by_block, 2)
-    size(topk_by_block, 1) == n_blocks ||
-        throw(DimensionMismatch("topk_by_block rows ($(size(topk_by_block,1))) must equal n_blocks ($n_blocks)"))
+    size(topk_by_block, 1) == n_blocks || throw(
+        DimensionMismatch(
+            "topk_by_block rows ($(size(topk_by_block,1))) must equal n_blocks ($n_blocks)",
+        ),
+    )
     batch_decay_activity_cpu!(activity, decay)
     apply_topk_boosts_cpu!(activity, topk_by_block, boost)
     @inbounds for i in eachindex(activity)
         v = activity[i]
-        activity[i] = v < 0f0 ? 0f0 : (v > 1f0 ? 1f0 : v)
+        activity[i] = v < 0.0f0 ? 0.0f0 : (v > 1.0f0 ? 1.0f0 : v)
     end
     return activity
 end
@@ -55,17 +60,19 @@ end
 For each block row `b`, add `boost` to `activity[b, topk_by_block[b, k]]` for
 every `k`, capped at `1.0f0`. Out-of-range expert indices are ignored.
 """
-function apply_topk_boosts_cpu!(activity::AbstractMatrix{Float32},
-                                topk_by_block::AbstractMatrix{<:Integer},
-                                boost::Float32)
+function apply_topk_boosts_cpu!(
+    activity::AbstractMatrix{Float32},
+    topk_by_block::AbstractMatrix{<:Integer},
+    boost::Float32,
+)
     n_blocks, n_experts = size(activity)
     top_k = size(topk_by_block, 2)
-    @inbounds for b in 1:n_blocks
-        for k in 1:top_k
+    @inbounds for b = 1:n_blocks
+        for k = 1:top_k
             e = Int(topk_by_block[b, k])
             if 1 <= e <= n_experts
                 v = activity[b, e] + boost
-                activity[b, e] = v > 1f0 ? 1f0 : v
+                activity[b, e] = v > 1.0f0 ? 1.0f0 : v
             end
         end
     end
@@ -88,11 +95,13 @@ Shapes:
 The CUDA path expects `CuArray{Float32,2}` and `CuArray{Int32,2}`; CUDA.jl is
 loaded lazily on first invocation.
 """
-function update_activity_field!(::CPUBackend,
-                                activity::AbstractMatrix{Float32},
-                                topk_by_block::AbstractMatrix{<:Integer};
-                                decay::Float32 = 0.92f0,
-                                boost::Float32 = 0.55f0)
+function update_activity_field!(
+    ::CPUBackend,
+    activity::AbstractMatrix{Float32},
+    topk_by_block::AbstractMatrix{<:Integer};
+    decay::Float32 = 0.92f0,
+    boost::Float32 = 0.55f0,
+)
     return update_activity_field_cpu!(activity, topk_by_block; decay = decay, boost = boost)
 end
 
@@ -113,26 +122,41 @@ function _ensure_cuda_kernels!()
     return nothing
 end
 
-function update_activity_field!(::CUDABackend,
-                                activity::AbstractMatrix{Float32},
-                                topk_by_block::AbstractMatrix{<:Integer};
-                                decay::Float32 = 0.92f0,
-                                boost::Float32 = 0.55f0)
+function update_activity_field!(
+    ::CUDABackend,
+    activity::AbstractMatrix{Float32},
+    topk_by_block::AbstractMatrix{<:Integer};
+    decay::Float32 = 0.92f0,
+    boost::Float32 = 0.55f0,
+)
     _ensure_cuda_kernels!()
     CuArray_T = Base.invokelatest(getfield, XAIDissectViz, :CuArray)
-    is_gpu = Base.invokelatest(isa, activity, CuArray_T) ||
-             (activity isa SubArray && Base.invokelatest(isa, parent(activity), CuArray_T))
+    is_gpu =
+        Base.invokelatest(isa, activity, CuArray_T) ||
+        (activity isa SubArray && Base.invokelatest(isa, parent(activity), CuArray_T))
     if !is_gpu
-        cuda_ok = try; Base.invokelatest(getfield, XAIDissectViz, :CUDA) |>
-                       m -> Base.invokelatest(getfield, m, :functional) |>
-                       f -> Base.invokelatest(f); catch; false; end
+        cuda_ok = try
+            Base.invokelatest(getfield, XAIDissectViz, :CUDA) |>
+            m ->
+                Base.invokelatest(getfield, m, :functional) |> f -> Base.invokelatest(f)
+        catch
+            false
+        end
         if cuda_ok
-            throw(ArgumentError(
-                "CUDABackend requires CuArray inputs; got CPU $(typeof(activity)). " *
-                "Upload with CuArray(...) first, or use CPUBackend()."))
+            throw(
+                ArgumentError(
+                    "CUDABackend requires CuArray inputs; got CPU $(typeof(activity)). " *
+                    "Upload with CuArray(...) first, or use CPUBackend().",
+                ),
+            )
         else
             @warn "CUDABackend with CPU arrays and CUDA non-functional; falling back to CPU"
-            return update_activity_field_cpu!(activity, topk_by_block; decay=decay, boost=boost)
+            return update_activity_field_cpu!(
+                activity,
+                topk_by_block;
+                decay = decay,
+                boost = boost,
+            )
         end
     end
     f = Base.invokelatest(getfield, XAIDissectViz, :_update_activity_field_cuda!)

@@ -27,8 +27,10 @@ isempty(reports_dir) && error(
 )
 
 bundle = load_report_bundle(reports_dir)
-println("Loaded bundle: provenance=$(bundle.provenance), " *
-        "routers=$(length(bundle.routers)), experts=$(length(bundle.experts))")
+println(
+    "Loaded bundle: provenance=$(bundle.provenance), " *
+    "routers=$(length(bundle.routers)), experts=$(length(bundle.experts))",
+)
 
 if has_cuda()
     println("CUDA functional — launching with CUDABackend()")
