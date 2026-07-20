@@ -8,7 +8,7 @@ XAIDissectViz.jl is a pure Julia package — no Node.js, Python, or Docker servi
 
 ### Julia version
 
-Julia **1.12** is required (`Manifest.toml` pins `julia_version = "1.12.6"`). The runtime is installed at `/opt/julia-install/julia-1.12.0/bin/julia` and symlinked to `/usr/local/bin/julia`.
+Julia **1.12** is required (`Manifest.toml` pins `julia_version = "1.12.6"`). The runtime is installed at `/opt/julia-install/julia-1.12.6/bin/julia` and symlinked to `/usr/local/bin/julia`.
 
 ### Running tests
 
@@ -37,6 +37,6 @@ Once precompiled, the non-visual API (`using XAIDissectViz`, `simulate_router_fr
 | Task | Command |
 |---|---|
 | Install deps | `julia --project=. -e 'using Pkg; Pkg.instantiate()'` |
-| Precompile | `xvfb-run -a julia --project=. -e 'using Pkg; Pkg.precompile()'` |
+| Precompile | `xvfb-run -a julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'` |
 | Run tests | `julia --project=. -e 'using Test; include("test/runtests.jl")'` |
 | Smoke load | `julia --project=. -e 'using XAIDissectViz; println("ok")'` |
