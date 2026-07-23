@@ -35,8 +35,8 @@ struct SAAQReadinessRecord
     details::String
 end
 
-struct XAIReportBundle
-    metadata::Dict{String,Any}
+struct XAIReportBundle{V, D <: AbstractDict{String, V}}
+    metadata::D
     routers::Vector{RouterRecord}
     experts::Vector{ExpertRecord}
     tensor_metrics::Vector{TensorMetricRecord}
@@ -55,11 +55,11 @@ struct RouterFrame
 end
 
 # Observable-driven state for the interactive atmosphere visualization
-mutable struct AtmosphereState
-    selected_block::Any  # Observable{Int}
-    token_idx::Any       # Observable{Int}
-    activity::Any        # Observable{Matrix{Float32}}
-    is_playing::Any      # Observable{Bool}
-    seed::Any            # Observable{Int}
-    frame::Any           # Observable{RouterFrame}
+mutable struct AtmosphereState{OInt, OMat, OBool, OFrame}
+    selected_block::OInt    # Observable{Int}
+    token_idx::OInt         # Observable{Int}
+    activity::OMat          # Observable{Matrix{Float32}}
+    is_playing::OBool       # Observable{Bool}
+    seed::OInt              # Observable{Int}
+    frame::OFrame           # Observable{RouterFrame}
 end

@@ -21,6 +21,7 @@ Thumbs.db
 # Julia
 # ======================
 Manifest.toml
+!format/Manifest.toml
 *.cov
 *.mem
 .julia/
