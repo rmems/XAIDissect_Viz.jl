@@ -13,6 +13,7 @@ Julia **1.12** is required (`Manifest.toml` pins `julia_version = "1.12.6"`). Th
 ### Running tests
 
 ```bash
+julia --project=. -e 'using Test; include("test/runtests.jl")'
 julia --project=. -e 'using Pkg; Pkg.test()'
 ```
 
