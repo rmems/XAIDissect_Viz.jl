@@ -42,6 +42,12 @@ Once precompiled, the non-visual API (`using XAIDissectViz`, `simulate_router_fr
 | Run tests | `julia --project=. -e 'using Pkg; Pkg.test()'` |
 | Smoke load | `julia --project=. -e 'using XAIDissectViz; println("ok")'` |
 
+### CI/CD Tooling
+
+- **Aqua.jl** — code quality checks (unused deps, ambiguities, type piracies)
+- **JuliaFormatter** — style enforcement (`.JuliaFormatter.toml`)
+- **Coverage.jl** — code coverage reporting
+
 ### Boundaries and Constraints
 
 1. Do not install Node.js, Python, or Docker services — this is a pure Julia project.
