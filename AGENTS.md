@@ -11,7 +11,7 @@ XAIDissectViz.jl is a pure Julia package — no Node.js, Python, or Docker servi
 - `cuda_available()` — soft probe (env override, cache, `find_package` check, then `CUDA.functional()`); never imports CUDA.jl when it isn't installed
 - `has_cuda()` — backward-compatible alias of `cuda_available()`
 - Default path is **CPU** (`CPUBackend`); CUDA (`CUDABackend`) is optional and tests skip when unavailable
-- Env: `XAIVIZ_CUDA_AVAILABLE=true|false` forces the probe result deterministically (used in CI)
+- Env: `XAIVIZ_CUDA_AVAILABLE=false` deterministically forces the probe to `false` without touching CUDA.jl (used in CI); `XAIVIZ_CUDA_AVAILABLE=true` does *not* force success — it requests a real `CUDA.functional()` probe and returns whatever that reports (still `false` on a CPU-only host)
 - Other key exports: `update_activity_field!`, `simulate_router_topk_batch`, `RouterFrameCache` / `build_frame_cache` / `get_frame`, `topk_matrix_for_token`, `activity_matrix_for_token`, `load_report_bundle`, `launch_atmosphere` — see `README.md` and `src/XAIDissectViz.jl` for the full export list
 
 ### Julia version
@@ -24,11 +24,7 @@ Julia **1.12** is required (`Manifest.toml` pins `julia_version = "1.12.6"`). Th
 julia --project=. -e 'using Pkg; Pkg.test()'
 ```
 
-Optional local alternative (skips the `Pkg.test` sandbox):
-
-```bash
-julia --project=. -e 'using Test; include("test/runtests.jl")'
-```
+This is the only supported entrypoint: `test/Project.toml` (Aqua, JSON3, Random) is only merged into the environment by `Pkg.test()`'s temporary sandbox, so running `include("test/runtests.jl")` directly under `--project=.` fails on `using Aqua`.
 
 All tests run headlessly on CPU. CUDA tests are gated and gracefully skip when no GPU is present. The `XAI_DISSECT_REPORTS` env var gates a real-report-load test; it is safe to leave unset.
 
@@ -57,7 +53,7 @@ Once precompiled, the non-visual API (`using XAIDissectViz`, `simulate_router_fr
 
 ### CI/CD Tooling
 
-- **Aqua.jl** — quality checks (unused deps, ambiguities, type piracies, stale exports) run inside `test/runtests.jl` (`Aqua.test_all`), via `Pkg.test()`; no separate CI job
+- **Aqua.jl** — quality checks run inside `test/runtests.jl` (`Aqua.test_all`) via `Pkg.test()`; `ambiguities` is explicitly enabled, while `piracies` and `stale_deps` are explicitly disabled (see the comments in `test/runtests.jl` for why — the lazily-loaded CUDA/GLMakie stack would otherwise be flagged). No separate CI job.
 - **JuliaFormatter** — style enforcement via `format/Project.toml` + `.JuliaFormatter.toml`, checked in `.github/workflows/format.yml`
   - Local: `julia --project=format -e 'using Pkg; Pkg.instantiate(); using JuliaFormatter; format(".", verbose=true)'`
 - **Coverage + Codecov** — `.github/workflows/ci.yml` runs `Pkg.test(coverage=true)`, processes lcov via `julia-actions/julia-processcoverage`, and uploads with `codecov/codecov-action` (`CODECOV_TOKEN`, soft-fail via `fail_ci_if_error: false`)

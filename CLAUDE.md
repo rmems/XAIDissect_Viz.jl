@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-XAIDissectViz.jl is a pure-Julia package (no Node.js/Python/Docker) that visualizes JSON reports produced by the sibling project `xai-dissect` (typically checked out at `~/rmems/xai-dissect`), for the 64-block, 8-expert Grok-1 MoE architecture. `xai-dissect` extracts checkpoint structure and emits reports; this package turns them into an interactive GLMakie "atmosphere" view. It never loads, runs, or redistributes Grok-1 weights — router dynamics are synthetic (seeded PRNG) simulations laid on top of real report metadata.
+XAIDissectViz.jl is currently a pure-Julia package (no Node.js/Python/Docker in the source tree) that visualizes JSON reports produced by the sibling project `xai-dissect` (typically checked out at `~/rmems/xai-dissect`), for the 64-block, 8-expert Grok-1 MoE architecture. `xai-dissect` extracts checkpoint structure and emits reports; this package turns them into an interactive GLMakie "atmosphere" view. It never loads, runs, or redistributes Grok-1 weights — router dynamics are synthetic (seeded PRNG) simulations laid on top of real report metadata.
 
 ## Commands
 
@@ -18,8 +18,9 @@ xvfb-run -a julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()
 # Run tests (primary command; runs Aqua quality checks + the full test suite)
 julia --project=. -e 'using Pkg; Pkg.test()'
 
-# Local alternative test entrypoint (skips the Pkg.test sandbox)
-julia --project=. -e 'using Test; include("test/runtests.jl")'
+# `Pkg.test()` above is the only supported entrypoint — test/Project.toml (Aqua, JSON3,
+# Random) is merged in by Pkg.test()'s temp sandbox, so `include("test/runtests.jl")`
+# under `--project=.` fails on `using Aqua`.
 
 # Run a single @testset: comment out the ones you don't want in test/runtests.jl,
 # or wrap the target testset in isolation — there is no built-in filter flag.
@@ -37,14 +38,14 @@ Julia **1.12** is required (`Manifest.toml` pins `1.12.6`). Tests run headlessly
 
 **Module structure** (`src/XAIDissectViz.jl` `include`s these in order): `types.jl` → `backend.jl` → `router.jl` → `kernels.jl` → `cache.jl` → `reports.jl` → `viz.jl`.
 
-**Lazy heavy-dependency loading is the central design constraint.** `using XAIDissectViz` must stay cheap on headless/no-GPU hosts, so CUDA.jl and the GLMakie/GraphMakie/Graphs/Observables stack are *not* imported at module init. Instead:
+**Lazy heavy-dependency loading is a central design constraint here.** `using XAIDissectViz` is meant to stay cheap on headless/no-GPU hosts, so CUDA.jl and the GLMakie/GraphMakie/Graphs/Observables stack are not imported at module init — preserve this pattern for new code unless a maintainer decides to change it. Instead:
 - `_ensure_cuda_kernels!()` in `src/kernels.jl` lazily `@eval`s `using CUDA` and `include`s `src/kernels_cuda.jl` (the actual `@cuda`-launched kernels) on first CUDA-backend use, guarded by a `ReentrantLock`.
-- `launch_atmosphere()` in `src/viz.jl` lazily `@eval`s `using GLMakie, GraphMakie, Graphs, Observables` and raises a clear error (suggesting `xvfb-run`) if the display/OpenGL stack isn't available. It then dispatches via `Base.invokelatest` to `_launch_atmosphere`, since the module's world-age hasn't seen the newly-loaded packages otherwise.
+- `launch_atmosphere()` in `src/viz.jl` lazily `@eval`s `using GLMakie, GraphMakie, Graphs, Observables` and raises a clear error (suggesting `xvfb-run`) if that package load itself fails. It then dispatches via `Base.invokelatest` to `_launch_atmosphere`, since the module's world-age hasn't seen the newly-loaded packages otherwise. Note the `try`/`catch` only wraps the package load: if the packages are already precompiled but no display/OpenGL context exists, the failure surfaces later from `display(fig)` inside `_launch_atmosphere` (outside that `try`) as a raw backend error, not the friendly `xvfb-run` message.
 - Any code that needs to check CUDA symbols before they're loaded uses `Base.invokelatest(getfield, XAIDissectViz, :SomeSymbol)` rather than a direct reference — see `kernels.jl` and `cache.jl` for the pattern.
 
-**CPU/CUDA backend dispatch**: `CPUBackend`/`CUDABackend` (in `backend.jl`) are singleton dispatch types passed through `router_logits`, `update_activity_field!`, etc. The CPU path is always the reference implementation and default; CUDA only accelerates the *visual* activity-field kernels (decay → top-k boost → clamp), never model inference. `cuda_available()` (alias `has_cuda()`) is a soft probe: env override (`XAIVIZ_CUDA_AVAILABLE`) → cache → `Base.find_package("CUDA")` existence check → `CUDA.functional()` — in that order, never importing CUDA.jl if it's absent.
+**CPU/CUDA backend dispatch**: `CPUBackend`/`CUDABackend` (in `backend.jl`) are singleton dispatch types passed through `router_logits`, `update_activity_field!`, etc. The CPU path is the reference implementation and default; CUDA accelerates both the visual activity-field kernels (decay → top-k boost → clamp, in `kernels_cuda.jl`) and the synthetic router-logit matmul in `router_logits(::CUDABackend, ...)` (`router.jl`) — never Grok-1 model inference or real weights. `cuda_available()` (alias `has_cuda()`) is a soft probe: env override (`XAIVIZ_CUDA_AVAILABLE`) → cache → `Base.find_package("CUDA")` existence check → `CUDA.functional()` — in that order, never importing CUDA.jl if it's absent.
 
-**Report loading (`reports.jl`)**: `load_report_bundle` is a strict, real-JSON-only loader for the 5 `xai-dissect` report files (`inventory.json`, `routing-report.json`, `stats.json`, `saaq-readiness.json`, `experts.json`). It resolves either a directory containing those files directly, or a "run root" with `exports/<ckpt_label>/` beneath it — raising `ArgumentError` if that run root has more than one valid checkpoint directory (the caller must disambiguate) or if any required file is missing. There is no synthetic/in-memory fallback bundle in library code; `_minimal_bundle()` in `test/runtests.jl` is test-only.
+**Report loading (`reports.jl`)**: `load_report_bundle` is, by design, a strict, real-JSON-only loader for the 5 `xai-dissect` report files (`inventory.json`, `routing-report.json`, `stats.json`, `saaq-readiness.json`, `experts.json`). It resolves either a directory containing those files directly, or a "run root" with `exports/<ckpt_label>/` beneath it — raising `ArgumentError` if that run root has more than one valid checkpoint directory (the caller must disambiguate) or if any required file is missing. There is no synthetic/in-memory fallback bundle in library code; `_minimal_bundle()` in `test/runtests.jl` is test-only.
 
 **Router simulation determinism (`router.jl`)**: All randomness goes through local `Xoshiro` RNGs seeded via `deterministic_xoshiro_seed(seed, tag, ...)` — Julia's global RNG is never touched (a test explicitly asserts this). `simulate_router_frame` computes one full (block, token) frame (logits/probs/entropy/activity) and caches its synthetic `W` matrix per `(seed, block, d_model, n_experts)` key in a size-capped module-level `Dict`. `simulate_router_topk_batch` is a cheaper variant that computes only top-k/entropy/confidence across all blocks for one token, used to populate the timeline cache.
 
@@ -56,6 +57,6 @@ Julia **1.12** is required (`Manifest.toml` pins `1.12.6`). Tests run headlessly
 
 - Pure Julia only — do not introduce Node.js, Python, or Docker.
 - Do not modify the pinned Julia version in `Manifest.toml`.
-- Do not add a synthetic/fallback path to `load_report_bundle` — missing report files must raise `ArgumentError`, by design.
-- `Aqua.test_all` (in `test/runtests.jl`) runs with `piracies = false` and `stale_deps = false` intentionally: the lazily-`@eval`-loaded packages (CUDA, GLMakie, GraphMakie, Graphs, Observables, Makie) are flagged as stale by Aqua's static analysis since they aren't imported at module init — this is expected, not a bug to fix.
+- Avoid adding a synthetic/fallback path to `load_report_bundle`: it's intentional that missing report files raise `ArgumentError` instead, so raise that in code review if a change proposes otherwise.
+- `Aqua.test_all` (in `test/runtests.jl`) intentionally disables two checks — this is expected, not a bug to fix: `piracies = false` because the `@eval using CUDA` pattern is deliberate augmentation, not type piracy; `stale_deps = false` because the lazily-loaded packages (CUDA, GLMakie, GraphMakie, Graphs, Observables, Makie) aren't imported at module init, so Aqua's static analysis would otherwise flag them as unused.
 - Formatting is enforced by `.github/workflows/format.yml` using the separate `format/` Julia environment, not by `test/runtests.jl`.
