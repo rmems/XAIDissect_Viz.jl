@@ -32,8 +32,22 @@ jobs:
           sudo apt-get install -y xvfb libgl1 mesa-utils
 
       - name: Instantiate
+        env:
+          # The default Julia pkg-server CDN has been serving corrupted artifact
+          # tarballs intermittently ("ERROR: Data Error : jl_*-download"), causing
+          # repeated CI failures unrelated to any code change here. Bypass it and
+          # fetch artifacts directly from their origin instead.
+          JULIA_PKG_SERVER: ""
         run: |
-          xvfb-run -a julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
+          for attempt in 1 2 3; do
+            if xvfb-run -a julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'; then
+              exit 0
+            fi
+            echo "::warning::Instantiate/precompile attempt $attempt failed; retrying after cleanup"
+            rm -rf ~/.julia/packages ~/.julia/artifacts ~/.julia/compiled
+            sleep 10
+          done
+          exit 1
 
       - name: Headless smoke load (no display required)
         run: julia --project=. -e 'using XAIDissectViz; println("XAIDissectViz loaded headlessly")'
