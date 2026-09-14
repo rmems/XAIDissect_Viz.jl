@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,7 +13,11 @@ permissions:
 jobs:
   test:
     name: Julia CPU tests
-    runs-on: ubuntu-latest
+    # pull_request stays on the GitHub-hosted, sandboxed runner — this repo is public,
+    # and routing fork pull_request runs to the self-hosted runner would let an
+    # untrusted PR execute arbitrary code on that machine. Only push (to main) and
+    # manual dispatch, which require write access, use the self-hosted runner.
+    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
 
     steps:
       - name: Checkout
