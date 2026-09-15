@@ -6,6 +6,14 @@
 
 XAIDissectViz.jl is a pure Julia package — no Node.js, Python, or Docker services. It visualises xai-dissect JSON reports for the Grok-1 MoE architecture. See `README.md` for full context.
 
+### CUDA probing
+
+- `cuda_available()` — soft probe for CUDA availability (env-var override, cache, `find_package`, functional check)
+- `has_cuda()` — backward-compatible alias of `cuda_available()`
+- Default path is **CPU** (`CPUBackend`); CUDA (`CUDABackend`) is optional and tests skip when unavailable
+- Env: `XAIVIZ_CUDA_AVAILABLE=false` forces the probe to `false` without importing CUDA.jl (used in CI). `XAIVIZ_CUDA_AVAILABLE=true` does **not** force success — it requests a real `CUDA.functional()` probe and returns whatever that reports
+- Other key exports: `update_activity_field!`, `simulate_router_topk_batch`, `RouterFrameCache` / `build_frame_cache` / `get_frame`, `topk_matrix_for_token`, `activity_matrix_for_token`, `load_report_bundle`, `launch_atmosphere` — see `README.md` and `src/XAIDissectViz.jl` for the full list
+
 ### Julia version
 
 Julia **1.12** is required (`Manifest.toml` pins `julia_version = "1.12.6"`). The runtime is installed at `/opt/julia-install/julia-1.12.6/bin/julia` and symlinked to `/usr/local/bin/julia`.
@@ -13,11 +21,12 @@ Julia **1.12** is required (`Manifest.toml` pins `julia_version = "1.12.6"`). Th
 ### Running tests
 
 ```bash
-julia --project=. -e 'using Test; include("test/runtests.jl")'
 julia --project=. -e 'using Pkg; Pkg.test()'
 ```
 
-All tests run headlessly on CPU. CUDA tests are gated and gracefully skip when no GPU is present. The `XAI_DISSECT_REPORTS` env var gates a real-report-load test; it is safe to leave unset.
+`Pkg.test()` is the only supported entrypoint: `test/Project.toml` (Aqua, JSON3, Random) is merged by `Pkg.test()`'s sandbox, so `include("test/runtests.jl")` under `--project=.` fails on `using Aqua`.
+
+All tests run headlessly on CPU. CUDA tests are gated behind `cuda_available()` / `has_cuda()` and skip when no GPU is present. `XAIVIZ_CUDA_AVAILABLE=false` forces that skip (CI). The `XAI_DISSECT_REPORTS` env var gates a real-report-load test; it is safe to leave unset.
 
 ### Precompilation / GLMakie caveat
 
