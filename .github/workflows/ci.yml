@@ -21,7 +21,7 @@ jobs:
       - name: Set up Julia
         uses: julia-actions/setup-julia@4c0cb0fce8556fdb04a90347310e5db8b1f98fb9 # v2
         with:
-          version: '1.12'
+          version: '1.12.6'
 
       - name: Cache Julia artifacts
         uses: julia-actions/cache@d10a6fd8f31b12404a54613ebad242900567f2b9 # v2
@@ -38,6 +38,9 @@ jobs:
           # CI failures unrelated to the docs change. Bypass it and fetch
           # artifacts directly from their origin instead.
           JULIA_PKG_SERVER: ""
+          # Instantiate should finish downloading sources before precompile
+          # walks the Manifest (stale extension parents caused InlineStrings errors).
+          JULIA_PKG_PRECOMPILE_AUTO: "0"
         run: |
           for attempt in 1 2 3; do
             if xvfb-run -a julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'; then
