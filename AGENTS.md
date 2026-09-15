@@ -11,7 +11,7 @@ XAIDissectViz.jl is a pure Julia package — no Node.js, Python, or Docker servi
 - `cuda_available()` — soft probe for CUDA availability (env-var override, cache, `find_package`, functional check)
 - `has_cuda()` — backward-compatible alias of `cuda_available()`
 - Default path is **CPU** (`CPUBackend`); CUDA (`CUDABackend`) is optional and tests skip when unavailable
-- Env: `XAIVIZ_CUDA_AVAILABLE=false` forces the probe to `false` without importing CUDA.jl (used in CI). `XAIVIZ_CUDA_AVAILABLE=true` does **not** force success — it requests a real `CUDA.functional()` probe and returns whatever that reports
+- Env `XAIVIZ_CUDA_AVAILABLE` (case-insensitive): `true`/`yes`/`1` requests a real `CUDA.functional()` probe and does **not** force success. Any other nonempty value (`false`/`no`/`0`, or a typo) forces `false` without importing CUDA.jl. Unset/empty uses the normal probe. CI sets `false`.
 - Other key exports: `update_activity_field!`, `simulate_router_topk_batch`, `RouterFrameCache` / `build_frame_cache` / `get_frame`, `topk_matrix_for_token`, `activity_matrix_for_token`, `load_report_bundle`, `launch_atmosphere` — see `README.md` and `src/XAIDissectViz.jl` for the full list
 
 ### Julia version
@@ -26,7 +26,7 @@ julia --project=. -e 'using Pkg; Pkg.test()'
 
 `Pkg.test()` is the only supported entrypoint: `test/Project.toml` (Aqua, JSON3, Random) is merged by `Pkg.test()`'s sandbox, so `include("test/runtests.jl")` under `--project=.` fails on `using Aqua`.
 
-All tests run headlessly on CPU. CUDA tests are gated behind `cuda_available()` / `has_cuda()` and skip when no GPU is present. `XAIVIZ_CUDA_AVAILABLE=false` forces that skip (CI). The `XAI_DISSECT_REPORTS` env var gates a real-report-load test; it is safe to leave unset.
+Tests run headlessly. CUDA-specific tests run only when `cuda_available()` / `has_cuda()` is true; they skip on CPU-only hosts and whenever `XAIVIZ_CUDA_AVAILABLE` is a non-truthy nonempty value (CI sets `false`). The `XAI_DISSECT_REPORTS` env var gates a real-report-load test; it is safe to leave unset.
 
 ### Precompilation / GLMakie caveat
 
