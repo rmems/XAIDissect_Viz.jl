@@ -56,7 +56,7 @@ function main()
     println("max |entropy_batch - entropy_frame| = ", entropy_maxdiff)
 
     println("examples (block, token, cache_topk, frame_topk):")
-    for token in 0:5, b in (1, 7, 32, 64)
+    for token = 0:5, b in (1, 7, 32, 64)
         batch = simulate_router_topk_batch(bundle, token; seed = 42, top_k = 2)
         frame = simulate_router_frame(bundle, b, token; seed = 42)
         println(
@@ -124,7 +124,12 @@ function main()
     t0 = time_ns()
     A = activity_matrix_for_token(c, 5)
     t1 = time_ns()
-    println("activity_matrix_for_token t=5: ", (t1 - t0) / 1e6, " ms  mean=", sum(A) / length(A))
+    println(
+        "activity_matrix_for_token t=5: ",
+        (t1 - t0) / 1e6,
+        " ms  mean=",
+        sum(A) / length(A),
+    )
 
     println("EXPERIMENT_OK")
 end
