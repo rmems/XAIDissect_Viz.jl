@@ -11,7 +11,7 @@ XAIDissectViz.jl is a pure Julia package — no Node.js, Python, or Docker servi
 - `cuda_available()` — soft probe (env override, cache, `find_package` check, then `CUDA.functional()`); never imports CUDA.jl when it isn't installed
 - `has_cuda()` — backward-compatible alias of `cuda_available()`
 - Default path is **CPU** (`CPUBackend`); CUDA (`CUDABackend`) is optional and tests skip when unavailable
-- Env: `XAIVIZ_CUDA_AVAILABLE=false` deterministically forces the probe to `false` without touching CUDA.jl (used in CI); `XAIVIZ_CUDA_AVAILABLE=true` does *not* force success — it requests a real `CUDA.functional()` probe and returns whatever that reports (still `false` on a CPU-only host)
+- Env `XAIVIZ_CUDA_AVAILABLE` (case-insensitive): `true`/`yes`/`1` requests a real `CUDA.functional()` probe and does **not** force success. Any other nonempty value (`false`/`no`/`0`, or a typo) forces `false` without importing CUDA.jl. Unset/empty uses the normal probe. CI sets `false`.
 - Other key exports: `update_activity_field!`, `simulate_router_topk_batch`, `RouterFrameCache` / `build_frame_cache` / `get_frame`, `topk_matrix_for_token`, `activity_matrix_for_token`, `load_report_bundle`, `launch_atmosphere` — see `README.md` and `src/XAIDissectViz.jl` for the full export list
 
 ### Julia version
@@ -26,7 +26,7 @@ julia --project=. -e 'using Pkg; Pkg.test()'
 
 This is the only supported entrypoint: `test/Project.toml` (Aqua, JSON3, Random) is only merged into the environment by `Pkg.test()`'s temporary sandbox, so running `include("test/runtests.jl")` directly under `--project=.` fails on `using Aqua`.
 
-All tests run headlessly on CPU. CUDA tests are gated and gracefully skip when no GPU is present. The `XAI_DISSECT_REPORTS` env var gates a real-report-load test; it is safe to leave unset.
+Tests run headlessly. CUDA-specific tests run only when `cuda_available()` / `has_cuda()` is true; they skip on CPU-only hosts and whenever `XAIVIZ_CUDA_AVAILABLE` is a non-truthy nonempty value (CI sets `false`). The `XAI_DISSECT_REPORTS` env var gates a real-report-load test; it is safe to leave unset.
 
 ### Precompilation / GLMakie caveat
 
