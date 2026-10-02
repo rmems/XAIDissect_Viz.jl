@@ -6,7 +6,7 @@
 # be safe to run more than once. See https://ampcode.com/docs/orbs/customizing
 #
 # Installs only what this repo's CI and manifests need:
-#   - apt: xvfb, libgl1, mesa-utils, curl, ca-certificates
+#   - apt: xvfb, libgl1, mesa-utils, curl, ca-certificates, xauth
 #   - juliaup 1.12.6 [default]
 #   - Pkg.instantiate() + Pkg.precompile() under xvfb-run (as in ci.yml)
 #
@@ -34,8 +34,9 @@ apt_install() {
   fi
 }
 
-# --- System packages (headless OpenGL for GLMakie, as in ci.yml; curl for the installers) ---
-apt_install xvfb libgl1 mesa-utils curl ca-certificates
+# --- System packages (headless OpenGL for GLMakie, as in ci.yml; xauth, which xvfb-run needs and
+# --no-install-recommends would skip; curl for the installers) ---
+apt_install xvfb libgl1 mesa-utils curl ca-certificates xauth
 
 # --- Julia (juliaup) ---
 # ci.yml pins Julia 1.12.6.
