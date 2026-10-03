@@ -44,7 +44,12 @@ apt_install xvfb libgl1 mesa-utils curl ca-certificates xauth
 JULIA_CHANNEL="1.12.6"
 export PATH="$HOME/.juliaup/bin:$PATH"
 if ! command -v juliaup >/dev/null 2>&1; then
-  curl -fsSL https://install.julialang.org | sh -s -- --yes --default-channel "$JULIA_CHANNEL"
+  installer="$(mktemp)"
+  trap 'rm -f "$installer"' EXIT
+  curl -fsSL https://install.julialang.org -o "$installer"
+  sh "$installer" --yes --default-channel "$JULIA_CHANNEL"
+  rm -f "$installer"
+  trap - EXIT
 fi
 if ! juliaup status | awk -v ch="$JULIA_CHANNEL" '{for (i = 1; i <= NF; i++) if ($i == ch) found = 1} END {exit !found}'; then
   juliaup add "$JULIA_CHANNEL"
@@ -54,8 +59,18 @@ juliaup default "$JULIA_CHANNEL"
 # --- Julia dependencies ---
 # Same as ci.yml: bypass the pkg-server CDN and precompile after instantiate, under a
 # headless X server because GLMakie needs a display.
-JULIA_PKG_SERVER="" JULIA_PKG_PRECOMPILE_AUTO=0 \
-  xvfb-run -a julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
+for attempt in 1 2 3; do
+  if JULIA_PKG_SERVER="" JULIA_PKG_PRECOMPILE_AUTO=0 \
+    xvfb-run -a julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'; then
+    break
+  fi
+  if [ "$attempt" -eq 3 ]; then
+    exit 1
+  fi
+  echo "Instantiate/precompile attempt $attempt failed; retrying after cleanup" >&2
+  rm -rf "$HOME/.julia/packages" "$HOME/.julia/artifacts" "$HOME/.julia/compiled"
+  sleep 10
+done
 
 # --- Expose the tools to later shells ---
 # The PATH exports above last only for this script; Amp starts the agent's shell
@@ -73,7 +88,13 @@ for dir in "${tool_dirs[@]}"; do
       python* | pip* | activate* | deactivate | Activate.ps1) continue ;;
     esac
     if [ -f "$tool" ] && [ -x "$tool" ]; then
-      $SUDO ln -sfn "$tool" "/usr/local/bin/$name"
+      target="/usr/local/bin/$name"
+      if { [ -e "$target" ] || [ -L "$target" ]; } &&
+        [ "$(readlink -f "$target")" != "$(readlink -f "$tool")" ]; then
+        echo "Refusing to replace existing $target" >&2
+        exit 1
+      fi
+      $SUDO ln -sfn "$tool" "$target"
     fi
   done
 done
