@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# Draft CodeRabbit config for rmems/XAIDissect_Viz.jl.
+language: en-US
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  fail_commit_status: false
+  auto_review:
+    enabled: true
+    drafts: false
+  path_filters:
+  - '!data/sample_reports/**'
+  path_instructions:
+  - path: '{src,test,examples}/**/*.jl'
+    instructions: 'Julia package code. The effective Julia compatibility floor is 1.12; CI runs Julia 1.12.6 (format job 1.12). Do not use Base/stdlib APIs newer than the compatibility floor without raising it. Review for type stability in hot paths (concrete struct field types, no abstractly typed containers, no non-`const` globals, no `Any`-returning branches), avoidable allocations in inner loops, and changes to exported API. CI runs `Pkg.instantiate()` and `Pkg.precompile()` under `xvfb-run`, then runs the smoke load without a display and with normal CUDA probing, and runs `Pkg.test()` without a display and with `XAIVIZ_CUDA_AVAILABLE=false`. Package loading must not import CUDA when it is unavailable; CUDA paths must be skipped when the override is false or CUDA is not functional. Package loading and non-visual APIs must not require a display; the interactive `launch_atmosphere` viewer requires a display/OpenGL context. Code must pass JuliaFormatter (`.JuliaFormatter.toml`).'
+  - path: '**/Project.toml'
+    instructions: Julia Project.toml. New `[deps]` entries should get a `[compat]` bound; flag widened or dropped bounds and any UUID change (UUIDs are immutable once registered).
+  - path: '**/Manifest.toml'
+    instructions: Resolver output committed on purpose. Do not review it line by line; only flag a changed `julia_version`, churn that is not explained by a Project.toml change, or resolved versions that violate `[compat]`.
+  - path: .github/workflows/**
+    instructions: GitHub Actions workflows. Keep `permissions:` least-privilege and job commands in sync with the local gates documented in the repo. Every `uses:` is pinned to a full commit SHA today; new or bumped actions must be too. CI switches to `self-hosted` only for non-PR events; keep pull_request runs on `ubuntu-latest`.
+  tools:
+    actionlint:
+      enabled: true
+    yamllint:
+      enabled: true
+    markdownlint:
+      enabled: true
