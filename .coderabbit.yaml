@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
-# Draft CodeRabbit config for rmems/XAIDissect_Viz.jl (generated locally, not pushed).
+# Draft CodeRabbit config for rmems/XAIDissect_Viz.jl.
 language: en-US
 reviews:
   profile: chill
@@ -12,7 +12,7 @@ reviews:
   - '!data/sample_reports/**'
   path_instructions:
   - path: '{src,test,examples}/**/*.jl'
-    instructions: 'Julia package code. `[compat] julia = "1.11"`; CI runs Julia 1.12.6 (format job 1.12). Do not use Base/stdlib APIs newer than the compat floor without raising it. Review for type stability in hot paths (concrete struct field types, no abstractly typed containers, no non-`const` globals, no `Any`-returning branches), avoidable allocations in inner loops, and changes to exported API. Tests run headless under `xvfb-run` with `XAIVIZ_CUDA_AVAILABLE=false`: every CUDA path must be skipped when that is false or CUDA is not functional, and GLMakie code must not assume a real display. Code must pass JuliaFormatter (`.JuliaFormatter.toml`).'
+    instructions: 'Julia package code. `[compat] julia = "1.11"`; CI runs Julia 1.12.6 (format job 1.12). Do not use Base/stdlib APIs newer than the compat floor without raising it. Review for type stability in hot paths (concrete struct field types, no abstractly typed containers, no non-`const` globals, no `Any`-returning branches), avoidable allocations in inner loops, and changes to exported API. CI runs dependency precompilation under `xvfb-run`, then runs the smoke load and `Pkg.test()` without a display and with `XAIVIZ_CUDA_AVAILABLE=false`: every CUDA path must be skipped when that is false or CUDA is not functional. Package loading and non-visual APIs must not require a display; the interactive `launch_atmosphere` viewer may require a display/OpenGL context. Code must pass JuliaFormatter (`.JuliaFormatter.toml`).'
   - path: '**/Project.toml'
     instructions: Julia Project.toml. New `[deps]` entries should get a `[compat]` bound; flag widened or dropped bounds and any UUID change (UUIDs are immutable once registered).
   - path: '**/Manifest.toml'
