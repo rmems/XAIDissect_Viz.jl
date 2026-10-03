@@ -1,5 +1,7 @@
 # AGENTS.md
 
+See @CLAUDE.md for additional repository context. The @-mention makes Amp load it; Amp reads `CLAUDE.md` on its own only when no `AGENTS.md` exists.
+
 ## Cursor Cloud specific instructions
 
 ### Project overview
