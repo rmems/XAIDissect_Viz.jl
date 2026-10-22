@@ -32,7 +32,7 @@ julia --project=format -e 'using Pkg; Pkg.instantiate(); using JuliaFormatter; f
 julia --project=. -e 'using XAIDissectViz; println("ok")'
 ```
 
-Julia **1.12** is required (`Manifest.toml` pins `1.12.6`). Tests run headlessly on CPU; CUDA-specific tests skip gracefully when no GPU is present (`XAIVIZ_CUDA_AVAILABLE=false` forces this deterministically, as CI does). The `XAI_DISSECT_REPORTS` env var gates one real-report-load test and is safe to leave unset.
+Julia **1.13.2** is required (`Manifest.toml` pins `1.13.2`; `Project.toml` compat is `julia = "1.13"`). The same pin is used by CI, the format workflow, `format/Manifest.toml`, and `.cursor/install.sh`. Tests run headlessly on CPU; CUDA-specific tests skip gracefully when no GPU is present (`XAIVIZ_CUDA_AVAILABLE=false` forces this deterministically, as CI does). The `XAI_DISSECT_REPORTS` env var gates one real-report-load test and is safe to leave unset.
 
 ## Architecture
 
@@ -56,7 +56,7 @@ Julia **1.12** is required (`Manifest.toml` pins `1.12.6`). Tests run headlessly
 ## Constraints
 
 - Pure Julia only — do not introduce Node.js, Python, or Docker.
-- Do not modify the pinned Julia version in `Manifest.toml`.
+- Keep the Julia pin at 1.13.2 together across `Manifest.toml`, `Project.toml`, `format/`, both GitHub workflows, and `.cursor/install.sh`. Do not change one of those without the others.
 - Avoid adding a synthetic/fallback path to `load_report_bundle`: it's intentional that missing report files raise `ArgumentError` instead, so raise that in code review if a change proposes otherwise.
 - `Aqua.test_all` (in `test/runtests.jl`) intentionally disables two checks — this is expected, not a bug to fix. `stale_deps = false` because the lazily-loaded packages (CUDA, GLMakie, GraphMakie, Graphs, Observables, Makie) aren't imported at module init, so Aqua's static analysis would otherwise flag them as unused. `piracies = false` per that file's own comment ("CUDA @eval is intentional augmentation, not piracy") — note the current CUDA dispatch methods (`router_logits(::CUDABackend, ...)`, etc.) extend XAIDissectViz's own functions with XAIDissectViz's own types, so they wouldn't trip Aqua's piracy check on their own merits either way; don't take this exemption as license to add a method that pirates an external function/type.
 - Formatting is enforced by `.github/workflows/format.yml` using the separate `format/` Julia environment, not by `test/runtests.jl`.
