@@ -77,7 +77,7 @@ julia --project=format -e 'using JuliaFormatter; exit(format(".") ? 0 : 1)'
 
 ### Remote CI Commands (GitHub Actions — `.github/workflows/ci.yml`)
 
-The CI workflow runs on `ubuntu-latest` with Julia 1.12 and `XAIVIZ_CUDA_AVAILABLE=false`:
+The CI workflow runs on `ubuntu-latest` with Julia 1.13.2 and `XAIVIZ_CUDA_AVAILABLE=false`:
 
 ```bash
 # CI step 1: Install system deps
