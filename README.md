@@ -35,8 +35,16 @@ julia --project=. -e 'using Pkg; Pkg.test()'
 - `xai-dissect` extracts Grok-1 checkpoint structure and emits the JSON reports.
 - `XAIDissectViz.jl` turns those reports into an explorable interactive atmosphere map.
 
-## License & Disclaimer
-See GPU support note below. This project never vendors weights, CUDA binaries, or proprietary artifacts.
+## License
+
+Licensed under either of:
+
+- **MIT License** ([LICENSE-MIT](LICENSE-MIT))
+- **Apache License 2.0** ([LICENSE-APACHE](LICENSE-APACHE))
+
+at your option.
+
+This project never vendors model weights, CUDA binaries, or other proprietary artifacts. See the GPU support note below for CUDA.jl usage.
 
 ## GPU Support
 XAIDissectViz uses CUDA.jl for optional GPU acceleration of router simulation and visual kernels. It does **not** vendor or redistribute the NVIDIA CUDA Toolkit, drivers, or any model weights. Users are responsible for installing compatible NVIDIA drivers and accepting upstream licenses.
