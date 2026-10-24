@@ -2,7 +2,7 @@ name = "XAIDissectViz"
 uuid = "408e581a-c870-4889-b34e-2d2ebbf75dbd"
 version = "0.1.0"
 license = "MIT OR Apache-2.0"
-authors = ["Raul Montoya Cardenas <montoyaraul34@gmail.com>"]
+authors = ["Raul Cardenas Montoya <montoyaraul34@gmail.com>"]
 
 [deps]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"

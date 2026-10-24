@@ -20,8 +20,8 @@ Thumbs.db
 # ======================
 # Julia
 # ======================
-Manifest.toml
-!Manifest.toml
+**/Manifest.toml
+!/Manifest.toml
 !format/Manifest.toml
 *.cov
 *.mem
