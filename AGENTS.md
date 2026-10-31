@@ -18,7 +18,7 @@ XAIDissectViz.jl is a pure Julia package — no Node.js, Python, or Docker servi
 
 ### Julia version
 
-Julia **1.12** is required (`Manifest.toml` pins `julia_version = "1.12.6"`). The runtime is installed at `/opt/julia-install/julia-1.12.6/bin/julia` and symlinked to `/usr/local/bin/julia`.
+Julia **1.13.2** is required (`Manifest.toml` pins `julia_version = "1.13.2"`; `Project.toml` compat is `julia = "1.13"`). `.cursor/install.sh` installs that juliaup channel and sets it as the default, so `julia` on PATH is 1.13.2.
 
 ### Running tests
 
@@ -28,7 +28,7 @@ julia --project=. -e 'using Pkg; Pkg.test()'
 
 This is the only supported entrypoint: `test/Project.toml` (Aqua, JSON3, Random) is only merged into the environment by `Pkg.test()`'s temporary sandbox, so running `include("test/runtests.jl")` directly under `--project=.` fails on `using Aqua`.
 
-Tests run headlessly. CUDA-specific tests run only when `cuda_available()` / `has_cuda()` is true; they skip on CPU-only hosts and whenever `XAIVIZ_CUDA_AVAILABLE` is a non-truthy nonempty value (CI sets `false`). The `XAI_DISSECT_REPORTS` env var gates a real-report-load test; it is safe to leave unset.
+Tests run on CPU; on headless Linux wrap `Pkg.test()` in `xvfb-run -a` (Aqua's persistent-tasks check precompiles GLMakie, which needs a display). CUDA-specific tests run only when `cuda_available()` / `has_cuda()` is true; they skip on CPU-only hosts and whenever `XAIVIZ_CUDA_AVAILABLE` is a non-truthy nonempty value (CI sets `false`). The `XAI_DISSECT_REPORTS` env var gates a real-report-load test; it is safe to leave unset.
 
 ### Precompilation / GLMakie caveat
 
@@ -64,6 +64,6 @@ Once precompiled, the non-visual API (`using XAIDissectViz`, `simulate_router_fr
 ### Boundaries and Constraints
 
 1. Do not install Node.js, Python, or Docker services — this is a pure Julia project.
-2. Do not modify the pinned Julia version in `Manifest.toml`.
+2. Keep the Julia pin at 1.13.2 together across `Manifest.toml`, `Project.toml`, `format/`, both GitHub workflows, and `.cursor/install.sh`. Do not change one of those without the others.
 3. Only run interactive GUI commands within an X display or via `xvfb-run`.
-4. Use the provided paths for the Julia runtime rather than attempting to download new versions.
+4. Use the Julia 1.13.2 runtime on PATH. Do not download a different Julia version.

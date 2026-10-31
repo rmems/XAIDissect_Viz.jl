@@ -77,7 +77,7 @@ julia --project=format -e 'using JuliaFormatter; exit(format(".") ? 0 : 1)'
 
 ### Remote CI Commands (GitHub Actions — `.github/workflows/ci.yml`)
 
-The CI workflow runs on `ubuntu-latest` with Julia 1.12 and `XAIVIZ_CUDA_AVAILABLE=false`:
+The CI workflow runs on `ubuntu-latest` with Julia 1.13.2 and `XAIVIZ_CUDA_AVAILABLE=false`:
 
 ```bash
 # CI step 1: Install system deps
@@ -89,8 +89,9 @@ xvfb-run -a julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()
 # CI step 3: Smoke load
 julia --project=. -e 'using XAIDissectViz; println("XAIDissectViz loaded headlessly")'
 
-# CI step 4: Run tests (CPU-only, coverage enabled)
-XAIVIZ_CUDA_AVAILABLE=false julia --project=. -e 'using Pkg; Pkg.test(coverage=true)'
+# CI step 4: Run tests (CPU-only, coverage enabled; xvfb-run because Aqua's persistent-tasks
+# check precompiles GLMakie in a wrapper env)
+XAIVIZ_CUDA_AVAILABLE=false xvfb-run -a julia --project=. -e 'using Pkg; Pkg.test(coverage=true)'
 
 # CI step 5: Process + upload coverage (julia-processcoverage action → Codecov)
 ```
