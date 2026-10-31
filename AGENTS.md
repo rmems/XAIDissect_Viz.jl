@@ -28,7 +28,7 @@ julia --project=. -e 'using Pkg; Pkg.test()'
 
 This is the only supported entrypoint: `test/Project.toml` (Aqua, JSON3, Random) is only merged into the environment by `Pkg.test()`'s temporary sandbox, so running `include("test/runtests.jl")` directly under `--project=.` fails on `using Aqua`.
 
-Tests run headlessly. CUDA-specific tests run only when `cuda_available()` / `has_cuda()` is true; they skip on CPU-only hosts and whenever `XAIVIZ_CUDA_AVAILABLE` is a non-truthy nonempty value (CI sets `false`). The `XAI_DISSECT_REPORTS` env var gates a real-report-load test; it is safe to leave unset.
+Tests run on CPU; on headless Linux wrap `Pkg.test()` in `xvfb-run -a` (Aqua's persistent-tasks check precompiles GLMakie, which needs a display). CUDA-specific tests run only when `cuda_available()` / `has_cuda()` is true; they skip on CPU-only hosts and whenever `XAIVIZ_CUDA_AVAILABLE` is a non-truthy nonempty value (CI sets `false`). The `XAI_DISSECT_REPORTS` env var gates a real-report-load test; it is safe to leave unset.
 
 ### Precompilation / GLMakie caveat
 

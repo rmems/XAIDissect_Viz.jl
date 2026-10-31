@@ -32,7 +32,7 @@ julia --project=format -e 'using Pkg; Pkg.instantiate(); using JuliaFormatter; f
 julia --project=. -e 'using XAIDissectViz; println("ok")'
 ```
 
-Julia **1.13.2** is required (`Manifest.toml` pins `1.13.2`; `Project.toml` compat is `julia = "1.13"`). The same pin is used by CI, the format workflow, `format/Manifest.toml`, and `.cursor/install.sh`. Tests run headlessly on CPU; CUDA-specific tests skip gracefully when no GPU is present (`XAIVIZ_CUDA_AVAILABLE=false` forces this deterministically, as CI does). The `XAI_DISSECT_REPORTS` env var gates one real-report-load test and is safe to leave unset.
+Julia **1.13.2** is required (`Manifest.toml` pins `1.13.2`; `Project.toml` compat is `julia = "1.13"`). The same pin is used by CI, the format workflow, `format/Manifest.toml`, and `.cursor/install.sh`. Tests run on CPU; on headless Linux wrap `Pkg.test()` in `xvfb-run -a` (Aqua's persistent-tasks check precompiles GLMakie, which needs a display, as CI does); CUDA-specific tests skip gracefully when no GPU is present (`XAIVIZ_CUDA_AVAILABLE=false` forces this deterministically, as CI does). The `XAI_DISSECT_REPORTS` env var gates one real-report-load test and is safe to leave unset.
 
 ## Architecture
 

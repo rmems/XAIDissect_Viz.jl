@@ -89,8 +89,9 @@ xvfb-run -a julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()
 # CI step 3: Smoke load
 julia --project=. -e 'using XAIDissectViz; println("XAIDissectViz loaded headlessly")'
 
-# CI step 4: Run tests (CPU-only, coverage enabled)
-XAIVIZ_CUDA_AVAILABLE=false julia --project=. -e 'using Pkg; Pkg.test(coverage=true)'
+# CI step 4: Run tests (CPU-only, coverage enabled; xvfb-run because Aqua's persistent-tasks
+# check precompiles GLMakie in a wrapper env)
+XAIVIZ_CUDA_AVAILABLE=false xvfb-run -a julia --project=. -e 'using Pkg; Pkg.test(coverage=true)'
 
 # CI step 5: Process + upload coverage (julia-processcoverage action → Codecov)
 ```
