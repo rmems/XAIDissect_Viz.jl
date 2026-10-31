@@ -63,7 +63,7 @@ jobs:
       - name: Run tests
         env:
           XAIVIZ_CUDA_AVAILABLE: "false"
-        run: julia --project=. -e 'using Pkg; Pkg.test(coverage=true)'
+        run: xvfb-run -a julia --project=. -e 'using Pkg; Pkg.test(coverage=true)'
 
       - name: Process coverage
         if: ${{ !cancelled() }}
